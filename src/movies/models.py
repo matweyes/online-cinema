@@ -1,13 +1,13 @@
 # Модели SQLAlchemy для таблиц фильмов и связанных сущностей
 from sqlalchemy import (
     Column,
-    Integer,
-    String,
     DateTime,
-    ForeignKey,
-    Text,
-    Numeric,
     Float,
+    ForeignKey,
+    Integer,
+    Numeric,
+    String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -46,7 +46,9 @@ class Director(Base):
 
 class Movie(Base):
     __tablename__ = "movies"
-    __table_args__ = (UniqueConstraint("name", "year", "time", name="uq_movie_name_year_time"),)
+    __table_args__ = (
+        UniqueConstraint("name", "year", "time", name="uq_movie_name_year_time"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     uuid = Column(String(36), unique=True, nullable=False, index=True)
@@ -108,9 +110,10 @@ class Comment(Base):
     text = Column(Text, nullable=False)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
-    updated_at = Column(DateTime, nullable=False, server_default=func.now(), onupdate=func.now())
+    updated_at = Column(
+        DateTime, nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     user = relationship("User", backref="comments")
     movie = relationship("Movie", backref="comments")
     parent = relationship("Comment", remote_side=[id], backref="replies")
-

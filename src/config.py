@@ -1,4 +1,4 @@
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_TITLE: str = "Online Cinema API"
@@ -18,7 +18,8 @@ class Settings(BaseSettings):
     MAIL_SERVER: str = "localhost"
     MAIL_PORT: int = 587
 
-    class Config:
-        env_file = ".env"
+    # use SettingsConfigDict for pydantic-settings v1/v2 settings configuration
+    model_config = SettingsConfigDict(env_file=".env")
+
 
 settings = Settings()

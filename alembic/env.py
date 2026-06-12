@@ -1,18 +1,18 @@
-from logging.config import fileConfig
 import asyncio
+from logging.config import fileConfig
 
 from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import create_async_engine
 
+# import models to register metadata (imports modules, not objects)
+import src.accounts.models  # noqa: F401
+import src.cart.models  # noqa: F401
+import src.movies.models  # noqa: F401
+import src.orders.models  # noqa: F401
 from alembic import context
 
 # import Base and all models so Alembic can see them
 from src.database import Base
-# import models to register metadata (imports modules, not objects)
-import src.accounts.models  # noqa: F401
-import src.movies.models  # noqa: F401
-import src.cart.models  # noqa: F401
-import src.orders.models  # noqa: F401
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -68,7 +68,8 @@ def run_migrations_online() -> None:
     )
 
     def do_run_migrations(connection):
-        # run_sync expects a synchronous callable; run Alembic synchronous code inside it
+        # run_sync expects a synchronous callable;
+        # run Alembic synchronous code inside it
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():

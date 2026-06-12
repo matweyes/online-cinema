@@ -68,7 +68,8 @@ def run_migrations_online() -> None:
     )
 
     def do_run_migrations(connection):
-        # run_sync expects a synchronous callable; run Alembic synchronous code inside it
+        # run_sync expects a synchronous callable;
+        # run Alembic synchronous code inside it
         context.configure(connection=connection, target_metadata=target_metadata)
 
         with context.begin_transaction():

@@ -1,0 +1,44 @@
+services:
+  web:
+    build: .
+    container_name: cinema-web
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+      - sqlite-data:/app/data
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: uvicorn src.main:app --host localhost --port 8000 --reload
+
+  redis:
+    image: redis:7-alpine
+    container_name: cinema-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+
+  celery-worker:
+    build: .
+    container_name: cinema-celery-worker
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: celery -A src.tasks.celery_app worker --loglevel=info
+
+  celery-beat:
+    build: .
+    container_name: cinema-celery-beat
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    command: celery -A src.tasks.celery_app beat --loglevel=info
+
+volumes:
+  sqlite-data:
+  redis-data:

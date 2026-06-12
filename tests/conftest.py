@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from src.database import Base, get_db
 from src.main import app
 
-TEST_DATABASE_URL = "sqlite+aiosqlite:///./test.db"
+TEST_DATABASE_URL = "sqlite+aiosqlite:///./data/test.db"
 
 engine_test = create_async_engine(TEST_DATABASE_URL, echo=False)
 async_session_test = async_sessionmaker(engine_test, class_=AsyncSession, expire_on_commit=False)

@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     APP_TITLE: str = "Online Cinema API"
-    DATABASE_URL: str = "sqlite+aiosqlite:///./cinema.db"
+    DATABASE_URL: str = "sqlite+aiosqlite:///./data/cinema.db"
     SECRET_KEY: str = "change-me-in-production"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30

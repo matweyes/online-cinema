@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+
 class Settings(BaseSettings):
     APP_TITLE: str = "Online Cinema API"
     DATABASE_URL: str = "sqlite+aiosqlite:///./data/cinema.db"

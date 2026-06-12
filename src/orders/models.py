@@ -1,5 +1,6 @@
 import enum
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, String, Numeric, func
+
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, func
 from sqlalchemy.orm import relationship
 
 from src.database import Base
@@ -18,7 +19,12 @@ class Order(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
-    status = Column(String(20), nullable=False, server_default=OrderStatusEnum.PENDING, default=OrderStatusEnum.PENDING)
+    status = Column(
+        String(20),
+        nullable=False,
+        server_default=OrderStatusEnum.PENDING,
+        default=OrderStatusEnum.PENDING,
+    )
     total_amount = Column(Numeric(10, 2), nullable=True)
 
     user = relationship("User", backref="orders")

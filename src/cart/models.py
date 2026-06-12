@@ -1,5 +1,5 @@
 # Модели корзины и элементов корзины
-from sqlalchemy import Column, Integer, ForeignKey, DateTime, UniqueConstraint, func
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, UniqueConstraint, func
 from sqlalchemy.orm import relationship
 
 from src.database import Base
@@ -9,7 +9,9 @@ class Cart(Base):
     __tablename__ = "carts"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    user_id = Column(
+        Integer, ForeignKey("users.id"), nullable=False, unique=True, index=True
+    )
 
     user = relationship("User", backref="cart", uselist=False)
     items = relationship("CartItem", backref="cart", cascade="all, delete-orphan")
@@ -26,4 +28,3 @@ class CartItem(Base):
     added_at = Column(DateTime, nullable=False, server_default=func.now())
 
     movie = relationship("Movie", backref="cart_items")
-

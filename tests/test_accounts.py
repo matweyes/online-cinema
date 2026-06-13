@@ -5,12 +5,13 @@ from sqlalchemy import select
 from src.accounts import enums
 from src.accounts.models import User, UserGroup
 from src.accounts.routers import get_password_hash
-
 from tests.conftest import async_session_test
 
 
 async def register_user(client: AsyncClient, email: str, password: str) -> str:
-    resp = await client.post("/api/v1/accounts/register", json={"email": email, "password": password})
+    resp = await client.post(
+        "/api/v1/accounts/register", json={"email": email, "password": password}
+    )
     assert resp.status_code == 201
     return resp.json()["activation_token"]
 
@@ -22,7 +23,9 @@ async def activate_user(client: AsyncClient, token: str):
 
 
 async def login_user(client: AsyncClient, email: str, password: str):
-    resp = await client.post("/api/v1/accounts/login", json={"username": email, "password": password})
+    resp = await client.post(
+        "/api/v1/accounts/login", json={"username": email, "password": password}
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data and "refresh_token" in data
@@ -37,7 +40,9 @@ async def test_register_activate_login_refresh_logout_flow(client: AsyncClient):
     token = await register_user(client, email, password)
 
     # login should fail while inactive
-    r = await client.post("/api/v1/accounts/login", json={"username": email, "password": password})
+    r = await client.post(
+        "/api/v1/accounts/login", json={"username": email, "password": password}
+    )
     assert r.status_code == 403
 
     # activate
@@ -46,7 +51,9 @@ async def test_register_activate_login_refresh_logout_flow(client: AsyncClient):
     access, refresh = await login_user(client, email, password)
 
     # get /me
-    r = await client.get("/api/v1/accounts/me", headers={"Authorization": f"Bearer {access}"})
+    r = await client.get(
+        "/api/v1/accounts/me", headers={"Authorization": f"Bearer {access}"}
+    )
     assert r.status_code == 200
     assert r.json()["email"] == email
 
@@ -103,7 +110,9 @@ async def test_change_password(client: AsyncClient):
     assert r.json().get("status") == "password_changed"
 
     # old password should not work
-    r = await client.post("/api/v1/accounts/login", json={"username": email, "password": old})
+    r = await client.post(
+        "/api/v1/accounts/login", json={"username": email, "password": old}
+    )
     assert r.status_code == 401
 
     # login with new
@@ -164,7 +173,9 @@ async def test_admin_change_group_and_activate(client: AsyncClient):
 
     async with async_session_test() as session:
         # ensure admin group exists
-        q = await session.execute(select(UserGroup).where(UserGroup.name == enums.UserGroupEnum.ADMIN.value))  # type: ignore
+        q = await session.execute(
+            select(UserGroup).where(UserGroup.name == enums.UserGroupEnum.ADMIN.value)
+        )  # type: ignore
         grp = q.scalars().first()
         if not grp:
             grp = UserGroup(name=enums.UserGroupEnum.ADMIN.value)
@@ -174,11 +185,15 @@ async def test_admin_change_group_and_activate(client: AsyncClient):
 
         # create admin user
         admin_hashed = get_password_hash(admin_pass)
-        admin = User(email=admin_email, hashed_password=admin_hashed, is_active=True, group_id=grp.id)
+        admin = User(
+            email=admin_email,
+            hashed_password=admin_hashed,
+            is_active=True,
+            group_id=grp.id,
+        )
         session.add(admin)
         await session.commit()
         await session.refresh(admin)
-        admin_id = admin.id
 
     # login as admin to get token
     access, _ = await login_user(client, admin_email, admin_pass)

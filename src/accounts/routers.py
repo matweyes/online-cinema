@@ -1,21 +1,19 @@
 """
 Accounts API router: registration, activation, auth, profile management.
 """
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+
+import logging
+from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, status, Body
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
-from jose.exceptions import ExpiredSignatureError
-import logging
-
 from passlib.context import CryptContext
-from pydantic import BaseModel, EmailStr, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from sqlalchemy import delete, select
-from sqlalchemy.orm import selectinload
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from src.accounts import enums
 from src.accounts.models import (
@@ -26,8 +24,8 @@ from src.accounts.models import (
     UserGroup,
     UserProfile,
 )
-from src.database import get_db
 from src.config import settings
+from src.database import get_db
 
 router = APIRouter()
 
@@ -89,19 +87,19 @@ class ResetPasswordSchema(BaseModel):
 
 
 class ProfileUpdateSchema(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    avatar: Optional[str] = None
-    gender: Optional[enums.GenderEnum] = None
-    date_of_birth: Optional[datetime] = None
-    info: Optional[str] = None
+    first_name: str | None = None
+    last_name: str | None = None
+    avatar: str | None = None
+    gender: enums.GenderEnum | None = None
+    date_of_birth: datetime | None = None
+    info: str | None = None
 
 
 class UserOut(BaseModel):
     id: int
     email: EmailStr
     is_active: bool
-    group: Optional[enums.UserGroupEnum] = None
+    group: enums.UserGroupEnum | None = None
 
     # Pydantic v2 configuration: read values from ORM attributes
     model_config = ConfigDict(from_attributes=True)
@@ -124,16 +122,16 @@ def get_password_hash(password: str) -> str:
     return pwd_context.hash(_truncate_password(password))
 
 
-def _ensure_aware(dt: Optional[datetime]) -> Optional[datetime]:
+def _ensure_aware(dt: datetime | None) -> datetime | None:
     """Return datetime as UTC-aware. If dt is naive, assume UTC."""
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        return dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
-def _is_expired(dt: Optional[datetime]) -> bool:
+def _is_expired(dt: datetime | None) -> bool:
     """Return True if dt is None or dt is before now (UTC).
 
     SQLite stores timestamps without tzinfo; normalize both sides to naive UTC
@@ -147,71 +145,115 @@ def _is_expired(dt: Optional[datetime]) -> bool:
         left_aware = _ensure_aware(dt)
     except Exception:
         return True
-    right_ts = datetime.now(timezone.utc).timestamp()
+    right_ts = datetime.now(UTC).timestamp()
     return left_aware.timestamp() < right_ts
 
 
-def create_access_token(subject: int, expires_delta: Optional[timedelta] = None) -> str:
+def create_access_token(subject: int, expires_delta: timedelta | None = None) -> str:
     # use timezone-aware UTC for token expiry
-    expire = datetime.now(timezone.utc) + (
-        expires_delta if expires_delta else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(UTC) + (
+        expires_delta
+        if expires_delta
+        else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     )
     to_encode = {"sub": str(subject), "exp": int(expire.timestamp())}
     return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
 
 
-async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
     # eagerly load group and profile to avoid lazy-loading (which triggers sync IO)
-    q = await db.execute(select(User).options(selectinload(User.group), selectinload(User.profile)).where(User.id == user_id))  # type: ignore
+    q = await db.execute(
+        select(User)
+        .options(selectinload(User.group), selectinload(User.profile))
+        .where(User.id == user_id)
+    )  # type: ignore
     return q.scalars().first()
 
 
 async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
     """Decode JWT and return subject as int (user id)."""
     try:
-        # decode without expiration check; we'll validate exp manually to avoid tz/format issues
-        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM], options={"verify_exp": False})
+        # decode without expiration check;
+        # we'll validate exp manually to avoid tz/format issues
+        payload = jwt.decode(
+            token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+            options={"verify_exp": False},
+        )
     except JWTError as e:
         try:
             unverified = jwt.get_unverified_claims(token)
         except Exception:
             unverified = None
         logger.exception("JWT decode failed: %s", e)
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"JWT decode failed: {e}; claims={unverified}", headers={"WWW-Authenticate": "Bearer"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"JWT decode failed: {e}; claims={unverified}",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from e
 
     # manual exp validation
     exp_val = payload.get("exp")
     if exp_val is not None:
         try:
-            exp_dt = datetime.fromtimestamp(float(exp_val), tz=timezone.utc)
-        except Exception:
+            exp_dt = datetime.fromtimestamp(float(exp_val), tz=UTC)
+        except Exception as e:
             # if exp is malformed, reject
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid exp claim in token", headers={"WWW-Authenticate": "Bearer"})
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid exp claim in token",
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from e
         if _is_expired(exp_dt):
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired", headers={"WWW-Authenticate": "Bearer"})
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
 
     sub_raw = payload.get("sub")
     if sub_raw is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="JWT missing sub claim", headers={"WWW-Authenticate": "Bearer"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="JWT missing sub claim",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     try:
         return int(sub_raw)
-    except Exception:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid sub claim in token", headers={"WWW-Authenticate": "Bearer"})
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid sub claim in token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from e
 
 
-async def admin_required(user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)) -> User:
-    """Dependency ensuring the user is admin; returns the ORM User for callers that need it."""
+async def admin_required(
+    user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)
+) -> User:
+    """Dependency ensuring the user is admin;
+    returns the ORM User for callers that need it."""
     user = await get_user_by_id(db, user_id)
     if not user or not user.group or user.group.name != enums.UserGroupEnum.ADMIN.value:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
+        )
     return user
 
 
-async def get_current_user(user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)) -> User:
-    """Return ORM User for current token-subject. Keeps existing endpoints compatible."""
+async def get_current_user(
+    user_id: int = Depends(get_current_user_id), db: AsyncSession = Depends(get_db)
+) -> User:
+    """Return ORM User for current token-subject.
+    Keeps existing endpoints compatible."""
     user = await get_user_by_id(db, user_id)
     if not user:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found", headers={"WWW-Authenticate": "Bearer"})
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return user
 
 
@@ -222,7 +264,9 @@ async def register(data: RegisterSchema, db: AsyncSession = Depends(get_db)) -> 
         raise HTTPException(status_code=400, detail="User already exists")
 
     # ensure user group exists
-    qg = await db.execute(select(UserGroup).where(UserGroup.name == enums.UserGroupEnum.USER.value))  # type: ignore
+    qg = await db.execute(
+        select(UserGroup).where(UserGroup.name == enums.UserGroupEnum.USER.value)
+    )  # type: ignore
     group = qg.scalars().first()
     if not group:
         group = UserGroup(name=enums.UserGroupEnum.USER.value)
@@ -230,13 +274,20 @@ async def register(data: RegisterSchema, db: AsyncSession = Depends(get_db)) -> 
         await db.commit()
         await db.refresh(group)
 
-    user = User(email=data.email, hashed_password=get_password_hash(data.password), is_active=False, group_id=group.id)
+    user = User(
+        email=data.email,
+        hashed_password=get_password_hash(data.password),
+        is_active=False,
+        group_id=group.id,
+    )
     db.add(user)
     await db.commit()
     await db.refresh(user)
 
     token_str = uuid4().hex
-    expires = datetime.now(timezone.utc) + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS)
+    expires = datetime.now(UTC) + timedelta(
+        hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS
+    )
     activation = ActivationToken(user_id=user.id, token=token_str, expires_at=expires)
     db.add(activation)
     await db.commit()
@@ -247,7 +298,9 @@ async def register(data: RegisterSchema, db: AsyncSession = Depends(get_db)) -> 
 
 @router.post("/activate")
 async def activate(data: ActivateSchema, db: AsyncSession = Depends(get_db)) -> dict:
-    q = await db.execute(select(ActivationToken).where(ActivationToken.token == data.token))  # type: ignore
+    q = await db.execute(
+        select(ActivationToken).where(ActivationToken.token == data.token)
+    )  # type: ignore
     at = q.scalars().first()
     if not at or _is_expired(at.expires_at):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
@@ -262,7 +315,9 @@ async def activate(data: ActivateSchema, db: AsyncSession = Depends(get_db)) -> 
 
 
 @router.post("/resend-activation")
-async def resend_activation(data: ResendActivationSchema, db: AsyncSession = Depends(get_db)) -> dict:
+async def resend_activation(
+    data: ResendActivationSchema, db: AsyncSession = Depends(get_db)
+) -> dict:
     q = await db.execute(select(User).where(User.email == data.email))  # type: ignore
     user = q.scalars().first()
     if not user:
@@ -272,7 +327,9 @@ async def resend_activation(data: ResendActivationSchema, db: AsyncSession = Dep
     # remove old token
     await db.execute(delete(ActivationToken).where(ActivationToken.user_id == user.id))  # type: ignore
     token_str = uuid4().hex
-    expires = datetime.now(timezone.utc) + timedelta(hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS)
+    expires = datetime.now(UTC) + timedelta(
+        hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS
+    )
     activation = ActivationToken(user_id=user.id, token=token_str, expires_at=expires)
     db.add(activation)
     await db.commit()
@@ -290,7 +347,7 @@ async def login(data: LoginSchema, db: AsyncSession = Depends(get_db)) -> Token:
 
     access_token = create_access_token(user.id)
     refresh_token_str = uuid4().hex
-    expires = datetime.now(timezone.utc) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
+    expires = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     rt = RefreshToken(user_id=user.id, token=refresh_token_str, expires_at=expires)
     db.add(rt)
     await db.commit()
@@ -299,15 +356,26 @@ async def login(data: LoginSchema, db: AsyncSession = Depends(get_db)) -> Token:
 
 
 @router.post("/logout")
-async def logout(data: LogoutSchema, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
-    await db.execute(delete(RefreshToken).where(RefreshToken.token == data.refresh_token, RefreshToken.user_id == current_user.id))  # type: ignore
+async def logout(
+    data: LogoutSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
+    await db.execute(
+        delete(RefreshToken).where(
+            RefreshToken.token == data.refresh_token,
+            RefreshToken.user_id == current_user.id,
+        )
+    )  # type: ignore
     await db.commit()
     return {"status": "logged_out"}
 
 
 @router.post("/refresh", response_model=dict)
 async def refresh(data: RefreshSchema, db: AsyncSession = Depends(get_db)) -> dict:
-    q = await db.execute(select(RefreshToken).where(RefreshToken.token == data.refresh_token))  # type: ignore
+    q = await db.execute(
+        select(RefreshToken).where(RefreshToken.token == data.refresh_token)
+    )  # type: ignore
     rt = q.scalars().first()
     if not rt or _is_expired(rt.expires_at):
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
@@ -316,7 +384,11 @@ async def refresh(data: RefreshSchema, db: AsyncSession = Depends(get_db)) -> di
 
 
 @router.post("/change-password")
-async def change_password(data: ChangePasswordSchema, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def change_password(
+    data: ChangePasswordSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     if not verify_password(data.old_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Old password mismatch")
     current_user.hashed_password = get_password_hash(data.new_password)
@@ -325,15 +397,21 @@ async def change_password(data: ChangePasswordSchema, current_user: User = Depen
 
 
 @router.post("/forgot-password")
-async def forgot_password(data: ForgotPasswordSchema, db: AsyncSession = Depends(get_db)) -> dict:
+async def forgot_password(
+    data: ForgotPasswordSchema, db: AsyncSession = Depends(get_db)
+) -> dict:
     q = await db.execute(select(User).where(User.email == data.email))  # type: ignore
     user = q.scalars().first()
     if not user:
         # do not reveal user existence
         return {"status": "ok"}
-    await db.execute(delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id))  # type: ignore
+    await db.execute(
+        delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
+    )  # type: ignore
     token_str = uuid4().hex
-    expires = datetime.now(timezone.utc) + timedelta(hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS)
+    expires = datetime.now(UTC) + timedelta(
+        hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS
+    )
     prt = PasswordResetToken(user_id=user.id, token=token_str, expires_at=expires)
     db.add(prt)
     await db.commit()
@@ -341,8 +419,12 @@ async def forgot_password(data: ForgotPasswordSchema, db: AsyncSession = Depends
 
 
 @router.post("/reset-password")
-async def reset_password(data: ResetPasswordSchema, db: AsyncSession = Depends(get_db)) -> dict:
-    q = await db.execute(select(PasswordResetToken).where(PasswordResetToken.token == data.token))  # type: ignore
+async def reset_password(
+    data: ResetPasswordSchema, db: AsyncSession = Depends(get_db)
+) -> dict:
+    q = await db.execute(
+        select(PasswordResetToken).where(PasswordResetToken.token == data.token)
+    )  # type: ignore
     prt = q.scalars().first()
     if not prt or _is_expired(prt.expires_at):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
@@ -358,20 +440,32 @@ async def reset_password(data: ResetPasswordSchema, db: AsyncSession = Depends(g
 
 @router.get("/me", response_model=UserOut)
 async def me(current_user: User = Depends(get_current_user)) -> UserOut:
-    # convert stored group name (string) to UserGroupEnum for Pydantic validation/serialization
+    # convert stored group name (string) to UserGroupEnum
+    # for Pydantic validation/serialization
     group_enum = None
     if current_user.group and current_user.group.name:
         try:
             group_enum = enums.UserGroupEnum(current_user.group.name)
         except Exception:
             group_enum = None
-    return UserOut(id=current_user.id, email=current_user.email, is_active=current_user.is_active, group=group_enum)
+    return UserOut(
+        id=current_user.id,
+        email=current_user.email,
+        is_active=current_user.is_active,
+        group=group_enum,
+    )
 
 
 @router.patch("/me/profile")
-async def update_profile(data: ProfileUpdateSchema, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)) -> dict:
+async def update_profile(
+    data: ProfileUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     """Update current user's profile using validated Pydantic schema."""
-    q = await db.execute(select(UserProfile).where(UserProfile.user_id == current_user.id))  # type: ignore
+    q = await db.execute(
+        select(UserProfile).where(UserProfile.user_id == current_user.id)
+    )  # type: ignore
     profile = q.scalars().first()
     if not profile:
         profile = UserProfile(user_id=current_user.id)
@@ -404,7 +498,12 @@ class GroupChangeSchema(BaseModel):
 
 
 @router.patch("/users/{user_id}/group")
-async def change_user_group(user_id: int, data: GroupChangeSchema, _admin: User = Depends(admin_required), db: AsyncSession = Depends(get_db)) -> dict:
+async def change_user_group(
+    user_id: int,
+    data: GroupChangeSchema,
+    _admin: User = Depends(admin_required),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     q = await db.execute(select(User).where(User.id == user_id))  # type: ignore
     user = q.scalars().first()
     if not user:
@@ -422,7 +521,11 @@ async def change_user_group(user_id: int, data: GroupChangeSchema, _admin: User 
 
 
 @router.patch("/users/{user_id}/activate")
-async def manual_activate(user_id: int, _admin: User = Depends(admin_required), db: AsyncSession = Depends(get_db)) -> dict:
+async def manual_activate(
+    user_id: int,
+    _admin: User = Depends(admin_required),
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     q = await db.execute(select(User).where(User.id == user_id))  # type: ignore
     user = q.scalars().first()
     if not user:

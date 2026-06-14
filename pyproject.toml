@@ -47,10 +47,11 @@ exclude = ["alembic/versions", "alembic/versions/**"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W", "UP", "B", "SIM"]
+ignore = ["B008"]
 
 [tool.mypy]
 python_version = "3.11"
-plugins = ["pydantic.mypy"]
+plugins = ["pydantic.mypy", "sqlalchemy.ext.mypy.plugin"]
 ignore_missing_imports = true
 strict = false
 warn_return_any = true

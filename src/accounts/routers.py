@@ -1,9 +1,8 @@
-"""
-Accounts API router: registration, activation, auth, profile management.
-"""
+from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -114,18 +113,19 @@ def _truncate_password(pw: str) -> str:
     return tb.decode("utf-8", errors="ignore")
 
 
-def verify_password(plain: str, hashed: str) -> bool:
+def verify_password(plain: str, hashed: str):
     return pwd_context.verify(_truncate_password(plain), hashed)
 
 
-def get_password_hash(password: str) -> str:
+def get_password_hash(password: str):
     return pwd_context.hash(_truncate_password(password))
 
 
-def _ensure_aware(dt: datetime | None) -> datetime | None:
-    """Return datetime as UTC-aware. If dt is naive, assume UTC."""
-    if dt is None:
-        return None
+def _ensure_aware(dt: datetime) -> datetime:
+    """Return datetime as UTC-aware. If dt is naive, assume UTC.
+
+    Expects dt is not None.
+    """
     if dt.tzinfo is None:
         return dt.replace(tzinfo=UTC)
     return dt.astimezone(UTC)
@@ -142,14 +142,15 @@ def _is_expired(dt: datetime | None) -> bool:
 
     # convert to aware UTC and compare timestamps
     try:
-        left_aware = _ensure_aware(dt)
+        left_aware = _ensure_aware(dt)  # type: ignore[arg-type]
     except Exception:
         return True
+    # left_aware now guaranteed to be datetime
     right_ts = datetime.now(UTC).timestamp()
     return left_aware.timestamp() < right_ts
 
 
-def create_access_token(subject: int, expires_delta: timedelta | None = None) -> str:
+def create_access_token(subject: int, expires_delta: timedelta | None = None):
     # use timezone-aware UTC for token expiry
     expire = datetime.now(UTC) + (
         expires_delta
@@ -161,11 +162,9 @@ def create_access_token(subject: int, expires_delta: timedelta | None = None) ->
 
 
 async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
-    # eagerly load group and profile to avoid lazy-loading (which triggers sync IO)
+    # eagerly load group to avoid lazy-loading (which triggers sync IO)
     q = await db.execute(
-        select(User)
-        .options(selectinload(User.group), selectinload(User.profile))
-        .where(User.id == user_id)
+        select(User).options(selectinload(User.group)).where(User.id == user_id)
     )  # type: ignore
     return q.scalars().first()
 
@@ -235,7 +234,8 @@ async def admin_required(
     """Dependency ensuring the user is admin;
     returns the ORM User for callers that need it."""
     user = await get_user_by_id(db, user_id)
-    if not user or not user.group or user.group.name != enums.UserGroupEnum.ADMIN.value:
+    group_name = getattr(user.group, "name", None) if user else None
+    if not user or not group_name or group_name != enums.UserGroupEnum.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
         )
@@ -301,11 +301,14 @@ async def activate(data: ActivateSchema, db: AsyncSession = Depends(get_db)) -> 
     q = await db.execute(
         select(ActivationToken).where(ActivationToken.token == data.token)
     )  # type: ignore
-    at = q.scalars().first()
-    if not at or _is_expired(at.expires_at):
+    at = cast(ActivationToken | None, q.scalars().first())
+    if not at:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    expires = cast(datetime | None, at.expires_at)
+    if _is_expired(expires):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     q = await db.execute(select(User).where(User.id == at.user_id))  # type: ignore
-    user = q.scalars().first()
+    user = cast(User | None, q.scalars().first())
     if not user:
         raise HTTPException(status_code=400, detail="User not found")
     user.is_active = True
@@ -330,7 +333,9 @@ async def resend_activation(
     expires = datetime.now(UTC) + timedelta(
         hours=settings.ACTIVATION_TOKEN_EXPIRE_HOURS
     )
-    activation = ActivationToken(user_id=user.id, token=token_str, expires_at=expires)
+    activation = ActivationToken(
+        user_id=cast(int, user.id), token=token_str, expires_at=expires
+    )
     db.add(activation)
     await db.commit()
     return {"activation_token": token_str}
@@ -340,15 +345,17 @@ async def resend_activation(
 async def login(data: LoginSchema, db: AsyncSession = Depends(get_db)) -> Token:
     q = await db.execute(select(User).where(User.email == data.username))  # type: ignore
     user = q.scalars().first()
-    if not user or not verify_password(data.password, user.hashed_password):
+    if not user or not verify_password(data.password, cast(str, user.hashed_password)):
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Inactive user")
 
-    access_token = create_access_token(user.id)
+    access_token = create_access_token(cast(int, user.id))
     refresh_token_str = uuid4().hex
     expires = datetime.now(UTC) + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
-    rt = RefreshToken(user_id=user.id, token=refresh_token_str, expires_at=expires)
+    rt = RefreshToken(
+        user_id=cast(int, user.id), token=refresh_token_str, expires_at=expires
+    )
     db.add(rt)
     await db.commit()
 
@@ -377,9 +384,12 @@ async def refresh(data: RefreshSchema, db: AsyncSession = Depends(get_db)) -> di
         select(RefreshToken).where(RefreshToken.token == data.refresh_token)
     )  # type: ignore
     rt = q.scalars().first()
-    if not rt or _is_expired(rt.expires_at):
+    if not rt:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
-    access_token = create_access_token(rt.user_id)
+    expires = cast(datetime | None, rt.expires_at)
+    if _is_expired(expires):
+        raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
+    access_token = create_access_token(cast(int, rt.user_id))
     return {"access_token": access_token}
 
 
@@ -389,7 +399,7 @@ async def change_password(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    if not verify_password(data.old_password, current_user.hashed_password):
+    if not verify_password(data.old_password, cast(str, current_user.hashed_password)):
         raise HTTPException(status_code=400, detail="Old password mismatch")
     current_user.hashed_password = get_password_hash(data.new_password)
     await db.commit()
@@ -412,7 +422,9 @@ async def forgot_password(
     expires = datetime.now(UTC) + timedelta(
         hours=settings.PASSWORD_RESET_TOKEN_EXPIRE_HOURS
     )
-    prt = PasswordResetToken(user_id=user.id, token=token_str, expires_at=expires)
+    prt = PasswordResetToken(
+        user_id=cast(int, user.id), token=token_str, expires_at=expires
+    )
     db.add(prt)
     await db.commit()
     return {"reset_token": token_str}
@@ -425,14 +437,17 @@ async def reset_password(
     q = await db.execute(
         select(PasswordResetToken).where(PasswordResetToken.token == data.token)
     )  # type: ignore
-    prt = q.scalars().first()
-    if not prt or _is_expired(prt.expires_at):
+    prt = cast(PasswordResetToken | None, q.scalars().first())
+    if not prt:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    expires = cast(datetime | None, prt.expires_at)
+    if _is_expired(expires):
         raise HTTPException(status_code=400, detail="Invalid or expired token")
     q = await db.execute(select(User).where(User.id == prt.user_id))  # type: ignore
-    user = q.scalars().first()
-    if not user:
+    found_user = cast(User | None, q.scalars().first())
+    if not found_user:
         raise HTTPException(status_code=400, detail="User not found")
-    user.hashed_password = get_password_hash(data.new_password)
+    found_user.hashed_password = get_password_hash(data.new_password)
     await db.delete(prt)
     await db.commit()
     return {"status": "password_reset"}
@@ -443,15 +458,16 @@ async def me(current_user: User = Depends(get_current_user)) -> UserOut:
     # convert stored group name (string) to UserGroupEnum
     # for Pydantic validation/serialization
     group_enum = None
-    if current_user.group and current_user.group.name:
+    group_name = getattr(current_user.group, "name", None)
+    if group_name:
         try:
-            group_enum = enums.UserGroupEnum(current_user.group.name)
+            group_enum = enums.UserGroupEnum(group_name)
         except Exception:
             group_enum = None
     return UserOut(
-        id=current_user.id,
-        email=current_user.email,
-        is_active=current_user.is_active,
+        id=cast(int, current_user.id),
+        email=cast(EmailStr, current_user.email),
+        is_active=cast(bool, current_user.is_active),
         group=group_enum,
     )
 
@@ -468,7 +484,7 @@ async def update_profile(
     )  # type: ignore
     profile = q.scalars().first()
     if not profile:
-        profile = UserProfile(user_id=current_user.id)
+        profile = UserProfile(user_id=cast(int, current_user.id))
         db.add(profile)
         await db.commit()
         await db.refresh(profile)
@@ -485,7 +501,7 @@ async def update_profile(
         # store string value in DB (SQLite)
         profile.gender = payload.gender.value
     if payload.date_of_birth is not None:
-        profile.date_of_birth = payload.date_of_birth
+        profile.date_of_birth = cast(Any, payload.date_of_birth)
     if payload.info is not None:
         profile.info = payload.info
 
@@ -515,7 +531,7 @@ async def change_user_group(
         db.add(group)
         await db.commit()
         await db.refresh(group)
-    user.group_id = group.id
+    user.group_id = cast(int, group.id)
     await db.commit()
     return {"status": "group_changed"}
 

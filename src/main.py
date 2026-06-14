@@ -5,6 +5,7 @@ from src.cart.routers import router as cart_router
 from src.config import settings
 from src.movies.genres_routers import router as genres_router
 from src.movies.routers import router as movies_router
+from src.orders.routers import router as orders_router
 
 app = FastAPI(
     title=settings.APP_TITLE,
@@ -18,7 +19,7 @@ app.include_router(accounts_router, prefix="/api/v1/accounts", tags=["Accounts"]
 app.include_router(movies_router, prefix="/api/v1/movies", tags=["Movies"])
 app.include_router(genres_router, prefix="/api/v1/genres", tags=["Genres"])
 app.include_router(cart_router, prefix="/api/v1/cart", tags=["Cart"])
-# app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
+app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
 
 
 @app.get("/api/health")

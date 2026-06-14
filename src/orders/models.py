@@ -1,7 +1,10 @@
-import enum
+from __future__ import annotations
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, Numeric, String, func
-from sqlalchemy.orm import relationship
+import enum
+from typing import Any
+
+from sqlalchemy import DateTime, ForeignKey, Integer, Numeric, String, func
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.database import Base
 
@@ -15,29 +18,39 @@ class OrderStatusEnum(str, enum.Enum):
 class Order(Base):
     __tablename__ = "orders"
 
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"), nullable=False, index=True
+    )
 
-    created_at = Column(DateTime, nullable=False, server_default=func.now())
-    status = Column(
+    created_at: Mapped[DateTime] = mapped_column(
+        DateTime, nullable=False, server_default=func.now()
+    )
+    status: Mapped[str] = mapped_column(
         String(20),
         nullable=False,
-        server_default=OrderStatusEnum.PENDING,
-        default=OrderStatusEnum.PENDING,
+        server_default=OrderStatusEnum.PENDING.value,
+        default=OrderStatusEnum.PENDING.value,
     )
-    total_amount = Column(Numeric(10, 2), nullable=True)
+    total_amount: Mapped[Numeric | None] = mapped_column(Numeric(10, 2), nullable=True)
 
-    user = relationship("User", backref="orders")
-    items = relationship("OrderItem", backref="order", cascade="all, delete-orphan")
+    user: Mapped[Any] = relationship("User", backref="orders")
+    items: Mapped[list[OrderItem]] = relationship(
+        "OrderItem", backref="order", cascade="all, delete-orphan"
+    )
 
 
 class OrderItem(Base):
     __tablename__ = "order_items"
 
-    id = Column(Integer, primary_key=True, index=True)
-    order_id = Column(Integer, ForeignKey("orders.id"), nullable=False, index=True)
-    movie_id = Column(Integer, ForeignKey("movies.id"), nullable=False, index=True)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    order_id: Mapped[int] = mapped_column(
+        ForeignKey("orders.id"), nullable=False, index=True
+    )
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id"), nullable=False, index=True
+    )
 
-    price_at_order = Column(Numeric(10, 2), nullable=False)
+    price_at_order: Mapped[Numeric] = mapped_column(Numeric(10, 2), nullable=False)
 
-    movie = relationship("Movie", backref="order_items")
+    movie: Mapped[Any] = relationship("Movie", backref="order_items")

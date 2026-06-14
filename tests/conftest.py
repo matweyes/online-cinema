@@ -21,13 +21,22 @@ async def override_get_db():
 app.dependency_overrides[get_db] = override_get_db
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True, scope="session")
 async def setup_db():
     async with engine_test.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with engine_test.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+
+
+@pytest.fixture(autouse=True)
+async def clean_db():
+    # Clean all tables before each test
+    async with async_session_test() as session:
+        for table in reversed(Base.metadata.sorted_tables):
+            await session.execute(table.delete())
+        await session.commit()
 
 
 @pytest.fixture

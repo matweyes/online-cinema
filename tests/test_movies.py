@@ -49,6 +49,16 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
     tokens = r.json()
     mod_access = tokens["access_token"]
 
+    # create a genre as moderator
+    r = await client.post(
+        "/api/v1/genres/",
+        json={"name": "Action"},
+        headers={"Authorization": f"Bearer {mod_access}"},
+    )
+    assert r.status_code == 201
+    genre = r.json()
+    genre_id = genre["id"]
+
     # create a movie
     movie_data = {
         "name": "Test Movie",
@@ -58,6 +68,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
         "votes": 1000,
         "price": 9.99,
         "description": "A test movie",
+        "genres": [genre_id],
     }
     r = await client.post(
         "/api/v1/movies/",
@@ -77,6 +88,20 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
     r = await client.get("/api/v1/movies/")
     assert r.status_code == 200
     assert any(m["id"] == movie_id for m in r.json())
+
+    # genres list should reflect movie count
+    r = await client.get("/api/v1/genres/")
+    assert r.status_code == 200
+    genres = r.json()
+    found = next((g for g in genres if g["id"] == genre_id), None)
+    assert found is not None
+    assert found.get("movie_count", 0) == 1
+
+    # movies by genre
+    r = await client.get(f"/api/v1/genres/{genre_id}/movies")
+    assert r.status_code == 200
+    movies_by_genre = r.json()
+    assert any(m["id"] == movie_id for m in movies_by_genre)
 
     # update movie
     r = await client.patch(

@@ -2,6 +2,7 @@ from fastapi import FastAPI
 
 from src.accounts.routers import router as accounts_router
 from src.config import settings
+from src.movies.genres_routers import router as genres_router
 from src.movies.routers import router as movies_router
 
 app = FastAPI(
@@ -14,6 +15,7 @@ app = FastAPI(
 # Routers are registered here as implemented
 app.include_router(accounts_router, prefix="/api/v1/accounts", tags=["Accounts"])
 app.include_router(movies_router, prefix="/api/v1/movies", tags=["Movies"])
+app.include_router(genres_router, prefix="/api/v1/genres", tags=["Genres"])
 # app.include_router(cart_router, prefix="/api/v1/cart", tags=["Cart"])
 # app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
 

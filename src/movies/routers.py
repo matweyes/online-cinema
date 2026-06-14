@@ -11,7 +11,14 @@ from src.accounts.models import User
 from src.accounts.routers import get_current_user
 from src.cart.models import CartItem
 from src.database import get_db
-from src.movies.models import Comment, Movie, MovieDirector, MovieGenre, MovieStar
+from src.movies.models import (
+    Comment,
+    Genre,
+    Movie,
+    MovieDirector,
+    MovieGenre,
+    MovieStar,
+)
 from src.orders.models import OrderItem
 
 router = APIRouter()
@@ -45,6 +52,7 @@ class MovieCreate(BaseModel):
     description: str | None = None
     price: float
     certification_id: int | None = None
+    genres: list[int] | None = None
 
 
 class MovieUpdate(BaseModel):
@@ -58,6 +66,7 @@ class MovieUpdate(BaseModel):
     description: str | None = None
     price: float | None = None
     certification_id: int | None = None
+    genres: list[int] | None = None
 
 
 class CommentOut(BaseModel):
@@ -169,6 +178,21 @@ async def create_movie(
     db.add(m)
     await db.commit()
     await db.refresh(m)
+    # handle genres associations
+    if payload.genres:
+        # validate genres exist
+        qg = await db.execute(select(Genre).where(Genre.id.in_(payload.genres)))
+        found = {g.id for g in qg.scalars().all()}
+        missing = set(payload.genres) - found
+        if missing:
+            raise HTTPException(
+                status_code=400, detail=f"Genres not found: {sorted(missing)}"
+            )
+        for gid in payload.genres:
+            mg = MovieGenre(movie_id=m.id, genre_id=gid)
+            db.add(mg)
+        await db.commit()
+        await db.refresh(m)
     return m
 
 
@@ -188,7 +212,22 @@ async def update_movie(
     except ValidationError as e:
         raise HTTPException(status_code=422, detail=e.errors()) from e
     for field, value in payload.model_dump(exclude_unset=True).items():
-        setattr(movie, field, value)
+        if field == "genres":
+            # replace genres associations
+            await db.execute(delete(MovieGenre).where(MovieGenre.movie_id == movie.id))
+            if value:
+                # validate provided genre ids
+                qg = await db.execute(select(Genre).where(Genre.id.in_(value)))
+                found = {g.id for g in qg.scalars().all()}
+                missing = set(value) - found
+                if missing:
+                    raise HTTPException(
+                        status_code=400, detail=f"Genres not found: {sorted(missing)}"
+                    )
+                for gid in value:
+                    db.add(MovieGenre(movie_id=movie.id, genre_id=gid))
+        else:
+            setattr(movie, field, value)
     await db.commit()
     await db.refresh(movie)
     return movie

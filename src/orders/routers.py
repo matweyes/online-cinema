@@ -4,15 +4,15 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.accounts import enums
-from src.accounts.helpers import admin_required, get_current_user, get_user_by_id
+from src.accounts.helpers import admin_required, get_current_user
 from src.cart.models import Cart, CartItem
 from src.database import get_db
 from src.general_schemas import StatusResponse
+from src.orders.helpers import get_order_with_access
 from src.orders.models import Order, OrderItem, OrderStatusEnum
 from src.orders.schemas import OrderResponse
 
@@ -104,104 +104,36 @@ async def admin_all_orders(
 
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
-    order_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_with_access),
 ) -> Order:
-    q = await db.execute(
-        select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
-    )
-    order = q.scalars().first()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
-        )
-    # allow owner or admin
-    if order.user_id != current_user.id:
-        admin_user = await get_user_by_id(db, current_user.id)
-        group_name = getattr(admin_user.group, "name", None) if admin_user else None
-        if (
-            not admin_user
-            or not group_name
-            or group_name != enums.UserGroupEnum.ADMIN.value
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
-            )
     return order
 
 
 @router.post("/{order_id}/cancel", response_model=StatusResponse)
 async def cancel_order(
-    order_id: int,
-    current_user: User = Depends(get_current_user),
+    order: Order = Depends(get_order_with_access),
     db: AsyncSession = Depends(get_db),
 ):
-    q = await db.execute(select(Order).where(Order.id == order_id))
-    order = q.scalars().first()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
-        )
-    if order.user_id != current_user.id:
-        # allow admin to cancel
-        admin_user = await get_user_by_id(db, current_user.id)
-        group_name = getattr(admin_user.group, "name", None) if admin_user else None
-        if (
-            not admin_user
-            or not group_name
-            or group_name != enums.UserGroupEnum.ADMIN.value
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
-            )
     if order.status != OrderStatusEnum.PENDING.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending orders can be canceled",
         )
-    await db.execute(
-        update(Order)
-        .where(Order.id == order_id)
-        .values(status=OrderStatusEnum.CANCELED.value)
-    )
+    order.status = OrderStatusEnum.CANCELED.value
     await db.commit()
     return StatusResponse(status="canceled")
 
 
 @router.post("/{order_id}/pay", response_model=StatusResponse)
 async def pay_order(
-    order_id: int,
-    current_user: User = Depends(get_current_user),
+    order: Order = Depends(get_order_with_access),
     db: AsyncSession = Depends(get_db),
 ):
-    q = await db.execute(select(Order).where(Order.id == order_id))
-    order = q.scalars().first()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
-        )
-    if order.user_id != current_user.id:
-        # allow admin to mark as paid
-        admin_user = await get_user_by_id(db, current_user.id)
-        group_name = getattr(admin_user.group, "name", None) if admin_user else None
-        if (
-            not admin_user
-            or not group_name
-            or group_name != enums.UserGroupEnum.ADMIN.value
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
-            )
     if order.status != OrderStatusEnum.PENDING.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending orders can be paid",
         )
-    await db.execute(
-        update(Order)
-        .where(Order.id == order_id)
-        .values(status=OrderStatusEnum.PAID.value)
-    )
+    order.status = OrderStatusEnum.PAID.value
     await db.commit()
     return StatusResponse(status="paid")

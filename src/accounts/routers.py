@@ -239,7 +239,8 @@ async def forgot_password(
     q = await db.execute(select(User).where(User.email == data.email))  # type: ignore
     user = q.scalars().first()
     if not user:
-        # do not reveal user existence
+        # do not reveal user existence (in real project write
+        # "sent email with instructions if user exists" and send email if found)
         return ResetResponse(reset_token="")
     await db.execute(
         delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)

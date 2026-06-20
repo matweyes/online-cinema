@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from src.accounts import enums
+from src.accounts.enums import UserGroupEnum
 
 
 class Token(BaseModel):
@@ -89,4 +90,4 @@ class ResetResponse(BaseModel):
 
 
 class GroupChangeSchema(BaseModel):
-    group: str
+    group: UserGroupEnum

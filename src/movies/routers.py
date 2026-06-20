@@ -6,7 +6,7 @@ from sqlalchemy import delete, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.accounts.models import User
-from src.accounts.routers import get_current_user
+from src.accounts.helpers import get_current_user
 from src.cart.models import CartItem
 from src.database import get_db
 from src.general_schemas import StatusResponse

@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.accounts.models import User
-from src.accounts.routers import get_current_user
+from src.accounts.helpers import get_current_user
 from src.cart.models import Cart, CartItem
 from src.cart.schemas import CartItemCreate, CartItemResponse, CartResponse
 from src.database import get_db
@@ -47,12 +47,8 @@ async def add_item(
     payload: CartItemCreate,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
-) -> CartItemResponse:
+):
     movie_id = payload.movie_id
-    if movie_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail="movie_id required"
-        )
     # ensure movie exists
     q_movie = await db.execute(select(Movie).where(Movie.id == movie_id))
     movie = cast(Movie | None, q_movie.scalars().first())

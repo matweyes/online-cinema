@@ -44,3 +44,27 @@ async def client():
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+
+async def register_user(client: AsyncClient, email: str, password: str) -> str:
+    resp = await client.post(
+        "/api/v1/accounts/register", json={"email": email, "password": password}
+    )
+    assert resp.status_code == 201
+    return resp.json()["activation_token"]
+
+
+async def activate_user(client: AsyncClient, token: str):
+    resp = await client.post("/api/v1/accounts/activation", json={"token": token})
+    assert resp.status_code == 200
+    assert resp.json().get("status") == "activated"
+
+
+async def login_user(client: AsyncClient, email: str, password: str):
+    resp = await client.post(
+        "/api/v1/accounts/login", json={"username": email, "password": password}
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "access_token" in data and "refresh_token" in data
+    return data["access_token"], data["refresh_token"]

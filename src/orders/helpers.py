@@ -21,7 +21,7 @@ async def get_order_with_access(
     )
     order = q.scalars().first()
     if not order:
-        raise HTTPException(status_code=404, detail="Order not found")
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Order not found")
 
     if order.user_id != current_user.id:
         group_name = getattr(current_user.group, "name", None)

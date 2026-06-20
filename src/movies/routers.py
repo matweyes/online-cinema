@@ -2,15 +2,15 @@
 from uuid import uuid4
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
-from pydantic import BaseModel, ConfigDict, ValidationError
 from sqlalchemy import delete, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.accounts.enums import UserGroupEnum
 from src.accounts.models import User
 from src.accounts.routers import get_current_user
 from src.cart.models import CartItem
 from src.database import get_db
+from src.general_schemas import StatusResponse
+from src.movies.helpers import _ensure_moderator
 from src.movies.models import (
     Comment,
     Genre,
@@ -19,83 +19,20 @@ from src.movies.models import (
     MovieGenre,
     MovieStar,
 )
+from src.movies.schemas import (
+    CommentCreate,
+    CommentResponse,
+    MovieCreate,
+    MovieResponse,
+    MovieUpdate,
+    ScoreStatusResponse,
+)
 from src.orders.models import OrderItem
 
 router = APIRouter()
 
 
-class MovieOut(BaseModel):
-    id: int
-    uuid: str
-    name: str
-    year: int
-    time: int
-    imdb: float
-    votes: int
-    meta_score: int | None = None
-    gross: float | None = None
-    description: str | None = None
-    price: float
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class MovieCreate(BaseModel):
-    uuid: str | None = None
-    name: str
-    year: int
-    time: int
-    imdb: float
-    votes: int
-    meta_score: int | None = None
-    gross: float | None = None
-    description: str | None = None
-    price: float
-    certification_id: int | None = None
-    genres: list[int] | None = None
-
-
-class MovieUpdate(BaseModel):
-    name: str | None = None
-    year: int | None = None
-    time: int | None = None
-    imdb: float | None = None
-    votes: int | None = None
-    meta_score: int | None = None
-    gross: float | None = None
-    description: str | None = None
-    price: float | None = None
-    certification_id: int | None = None
-    genres: list[int] | None = None
-
-
-class CommentOut(BaseModel):
-    id: int
-    user_id: int
-    movie_id: int
-    parent_id: int | None
-    text: str
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class CommentCreate(BaseModel):
-    text: str
-    parent_id: int | None = None
-
-
-async def _ensure_moderator(current_user: User = Depends(get_current_user)) -> User:
-    if not current_user.group or current_user.group.name not in (
-        UserGroupEnum.MODERATOR.value,
-        UserGroupEnum.ADMIN.value,
-    ):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Moderator required"
-        )
-    return current_user
-
-
-@router.get("/", response_model=list[MovieOut])
+@router.get("/", response_model=list[MovieResponse])
 async def list_movies(
     page: int = Query(1, ge=1),
     size: int = Query(10, ge=1, le=100),
@@ -120,13 +57,13 @@ async def list_movies(
 
 
 # Static routes must be declared before dynamic routes like '/{movie_id}'
-@router.get("/favorites", response_model=list[MovieOut])
+@router.get("/favorites", response_model=list[MovieResponse])
 async def list_favorites(current_user: User = Depends(get_current_user)):
     # favorites not persisted yet; return empty list
     return []
 
 
-@router.post("/comments/{comment_id}/like")
+@router.post("/comments/{comment_id}/likes", response_model=StatusResponse)
 async def like_comment(
     comment_id: int,
     current_user: User = Depends(get_current_user),
@@ -135,33 +72,30 @@ async def like_comment(
     # not persisted yet
     r = await db.execute(select(Comment).where(Comment.id == comment_id))
     if not r.scalars().first():
-        raise HTTPException(status_code=404, detail="Comment not found")
-    return {"status": "liked"}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
+        )
+    return StatusResponse(status="liked")
 
 
-@router.get("/{movie_id}", response_model=MovieOut)
+@router.get("/{movie_id}", response_model=MovieResponse)
 async def get_movie(movie_id: int, db: AsyncSession = Depends(get_db)):
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     movie = r.scalars().first()
     if not movie:
-        raise HTTPException(status_code=404, detail="Movie not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
     return movie
 
 
-@router.post("/", response_model=MovieOut, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=MovieResponse, status_code=status.HTTP_201_CREATED)
 async def create_movie(
-    data: dict = Body(...),
+    payload: MovieCreate,
     _mod: User = Depends(_ensure_moderator),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a movie. Accept loose JSON and validate inside
-    to avoid strict pre-validation 422s in tests."""
-    try:
-        payload = MovieCreate(**data)
-    except ValidationError as e:
-        # return friendly validation error
-        raise HTTPException(status_code=422, detail=e.errors()) from e
-
+    """Create a movie."""
     m = Movie(
         uuid=payload.uuid or str(uuid4()),
         name=payload.name,
@@ -186,7 +120,8 @@ async def create_movie(
         missing = set(payload.genres) - found
         if missing:
             raise HTTPException(
-                status_code=400, detail=f"Genres not found: {sorted(missing)}"
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Genres not found: {sorted(missing)}",
             )
         for gid in payload.genres:
             mg = MovieGenre(movie_id=m.id, genre_id=gid)
@@ -196,21 +131,19 @@ async def create_movie(
     return m
 
 
-@router.patch("/{movie_id}", response_model=MovieOut)
+@router.patch("/{movie_id}", response_model=MovieResponse)
 async def update_movie(
     movie_id: int,
-    data: dict = Body(...),
+    payload: MovieUpdate,
     _mod: User = Depends(_ensure_moderator),
     db: AsyncSession = Depends(get_db),
 ):
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     movie = r.scalars().first()
     if not movie:
-        raise HTTPException(status_code=404, detail="Movie not found")
-    try:
-        payload = MovieUpdate(**data)
-    except ValidationError as e:
-        raise HTTPException(status_code=422, detail=e.errors()) from e
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
     for field, value in payload.model_dump(exclude_unset=True).items():
         if field == "genres":
             # replace genres associations
@@ -222,7 +155,8 @@ async def update_movie(
                 missing = set(value) - found
                 if missing:
                     raise HTTPException(
-                        status_code=400, detail=f"Genres not found: {sorted(missing)}"
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Genres not found: {sorted(missing)}",
                     )
                 for gid in value:
                     db.add(MovieGenre(movie_id=movie.id, genre_id=gid))
@@ -233,7 +167,7 @@ async def update_movie(
     return movie
 
 
-@router.delete("/{movie_id}")
+@router.delete("/{movie_id}", response_model=StatusResponse)
 async def delete_movie(
     movie_id: int,
     _mod: User = Depends(_ensure_moderator),
@@ -242,11 +176,15 @@ async def delete_movie(
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     movie = r.scalars().first()
     if not movie:
-        raise HTTPException(status_code=404, detail="Movie not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
     # check purchased
     q = await db.execute(select(OrderItem).where(OrderItem.movie_id == movie.id))
     if q.scalars().first():
-        raise HTTPException(status_code=400, detail="Cannot delete bought movie")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot delete bought movie"
+        )
     # delete related rows from association tables
     # and cart items to avoid FK constraint issues in SQLite
     await db.execute(delete(Comment).where(Comment.movie_id == movie.id))
@@ -257,10 +195,10 @@ async def delete_movie(
     # use SQL delete to avoid ORM trying to nullify FK relationships
     await db.execute(delete(Movie).where(Movie.id == movie.id))
     await db.commit()
-    return {"status": "deleted"}
+    return StatusResponse(status="deleted")
 
 
-@router.post("/{movie_id}/like")
+@router.post("/{movie_id}/likes", response_model=StatusResponse)
 async def like_movie(
     movie_id: int,
     current_user: User = Depends(get_current_user),
@@ -269,11 +207,13 @@ async def like_movie(
     # Placeholder: liking not persisted yet
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     if not r.scalars().first():
-        raise HTTPException(status_code=404, detail="Movie not found")
-    return {"status": "liked"}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
+    return StatusResponse(status="liked")
 
 
-@router.get("/{movie_id}/comments", response_model=list[CommentOut])
+@router.get("/{movie_id}/comments", response_model=list[CommentResponse])
 async def list_comments(movie_id: int, db: AsyncSession = Depends(get_db)):
     r = await db.execute(
         select(Comment).where(Comment.movie_id == movie_id).order_by(Comment.id)
@@ -283,7 +223,7 @@ async def list_comments(movie_id: int, db: AsyncSession = Depends(get_db)):
 
 @router.post(
     "/{movie_id}/comments",
-    response_model=CommentOut,
+    response_model=CommentResponse,
     status_code=status.HTTP_201_CREATED,
 )
 async def create_comment(
@@ -294,7 +234,9 @@ async def create_comment(
 ):
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     if not r.scalars().first():
-        raise HTTPException(status_code=404, detail="Movie not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
     comment = Comment(
         user_id=current_user.id,
         movie_id=movie_id,
@@ -307,7 +249,7 @@ async def create_comment(
     return comment
 
 
-@router.post("/{movie_id}/rate")
+@router.post("/{movie_id}/rate", response_model=ScoreStatusResponse)
 async def rate_movie(
     movie_id: int,
     score: int = Body(..., ge=1, le=10),
@@ -317,11 +259,13 @@ async def rate_movie(
     # rating storage not implemented; return OK if movie exists
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     if not r.scalars().first():
-        raise HTTPException(status_code=404, detail="Movie not found")
-    return {"status": "rated", "score": score}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
+    return ScoreStatusResponse(status="rated", score=score)
 
 
-@router.post("/{movie_id}/favorite")
+@router.post("/{movie_id}/favorites", response_model=StatusResponse)
 async def add_favorite(
     movie_id: int,
     current_user: User = Depends(get_current_user),
@@ -329,11 +273,13 @@ async def add_favorite(
 ):
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     if not r.scalars().first():
-        raise HTTPException(status_code=404, detail="Movie not found")
-    return {"status": "favorited"}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
+    return StatusResponse(status="favorited")
 
 
-@router.delete("/{movie_id}/favorite")
+@router.delete("/{movie_id}/favorites", response_model=StatusResponse)
 async def remove_favorite(
     movie_id: int,
     current_user: User = Depends(get_current_user),
@@ -341,5 +287,7 @@ async def remove_favorite(
 ):
     r = await db.execute(select(Movie).where(Movie.id == movie_id))
     if not r.scalars().first():
-        raise HTTPException(status_code=404, detail="Movie not found")
-    return {"status": "unfavorited"}
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
+    return StatusResponse(status="unfavorited")

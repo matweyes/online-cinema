@@ -14,7 +14,7 @@ async def register_and_activate(client: AsyncClient, email: str, password: str) 
     )
     assert r.status_code == 201
     token = r.json()["activation_token"]
-    r = await client.post("/api/v1/accounts/activate", json={"token": token})
+    r = await client.post("/api/v1/accounts/activation", json={"token": token})
     assert r.status_code == 200
     return token
 

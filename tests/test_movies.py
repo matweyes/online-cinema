@@ -121,7 +121,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
     assert r.status_code == 201
     activation = r.json().get("activation_token")
     assert activation
-    r = await client.post("/api/v1/accounts/activate", json={"token": activation})
+    r = await client.post("/api/v1/accounts/activation", json={"token": activation})
     assert r.status_code == 200
 
     # login user
@@ -134,7 +134,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # like movie
     r = await client.post(
-        f"/api/v1/movies/{movie_id}/like",
+        f"/api/v1/movies/{movie_id}/likes",
         headers={"Authorization": f"Bearer {user_access}"},
     )
     assert r.status_code == 200
@@ -159,7 +159,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # like comment
     r = await client.post(
-        f"/api/v1/movies/comments/{comment_id}/like",
+        f"/api/v1/movies/comments/{comment_id}/likes",
         headers={"Authorization": f"Bearer {user_access}"},
     )
     assert r.status_code == 200
@@ -175,7 +175,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # add favorite
     r = await client.post(
-        f"/api/v1/movies/{movie_id}/favorite",
+        f"/api/v1/movies/{movie_id}/favorites",
         headers={"Authorization": f"Bearer {user_access}"},
     )
     assert r.status_code == 200
@@ -190,7 +190,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # remove favorite
     r = await client.delete(
-        f"/api/v1/movies/{movie_id}/favorite",
+        f"/api/v1/movies/{movie_id}/favorites",
         headers={"Authorization": f"Bearer {user_access}"},
     )
     assert r.status_code == 200

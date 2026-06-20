@@ -17,7 +17,7 @@ async def register_user(client: AsyncClient, email: str, password: str) -> str:
 
 
 async def activate_user(client: AsyncClient, token: str):
-    resp = await client.post("/api/v1/accounts/activate", json={"token": token})
+    resp = await client.post("/api/v1/accounts/activation", json={"token": token})
     assert resp.status_code == 200
     assert resp.json().get("status") == "activated"
 
@@ -82,7 +82,7 @@ async def test_resend_activation(client: AsyncClient):
     password = "strongpass"
     token1 = await register_user(client, email, password)
 
-    r = await client.post("/api/v1/accounts/resend-activation", json={"email": email})
+    r = await client.post("/api/v1/accounts/activation/resend", json={"email": email})
     assert r.status_code == 200
     token2 = r.json().get("activation_token")
     assert token2 and token2 != token1
@@ -101,7 +101,7 @@ async def test_change_password(client: AsyncClient):
 
     access, _ = await login_user(client, email, old)
 
-    r = await client.post(
+    r = await client.patch(
         "/api/v1/accounts/change-password",
         json={"old_password": old, "new_password": new},
         headers={"Authorization": f"Bearer {access}"},
@@ -215,7 +215,7 @@ async def test_admin_change_group_and_activate(client: AsyncClient):
 
     # manual activate
     r = await client.patch(
-        f"/api/v1/accounts/users/{target_id}/activate",
+        f"/api/v1/accounts/users/{target_id}/activation",
         headers={"Authorization": f"Bearer {access}"},
     )
     assert r.status_code == 200

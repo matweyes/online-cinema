@@ -239,7 +239,8 @@ async def forgot_password(
     q = await db.execute(select(User).where(User.email == data.email))  # type: ignore
     user = q.scalars().first()
     if not user:
-        # do not reveal user existence
+        # do not reveal user existence (in real project write
+        # "sent email with instructions if user exists" and send email if found)
         return ResetResponse(reset_token="")
     await db.execute(
         delete(PasswordResetToken).where(PasswordResetToken.user_id == user.id)
@@ -321,21 +322,15 @@ async def update_profile(
         await db.commit()
         await db.refresh(profile)
 
-    # apply validated fields
-    payload = data
-    if payload.first_name is not None:
-        profile.first_name = payload.first_name
-    if payload.last_name is not None:
-        profile.last_name = payload.last_name
-    if payload.avatar is not None:
-        profile.avatar = payload.avatar
-    if payload.gender is not None:
-        # store string value in DB (SQLite)
-        profile.gender = payload.gender.value
-    if payload.date_of_birth is not None:
-        profile.date_of_birth = cast(Any, payload.date_of_birth)
-    if payload.info is not None:
-        profile.info = payload.info
+    # apply only the fields the client actually sent
+    for field, value in data.model_dump(exclude_unset=True).items():
+        if field == "gender":
+            # store string value in DB (SQLite)
+            profile.gender = value.value if value is not None else None
+        elif field == "date_of_birth":
+            profile.date_of_birth = cast(Any, value)
+        else:
+            setattr(profile, field, value)
 
     await db.commit()
     return StatusResponse(status="profile_updated")

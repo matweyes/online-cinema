@@ -1,8 +1,8 @@
 from fastapi import Depends, HTTPException, status
 
 from src.accounts.enums import UserGroupEnum
+from src.accounts.helpers import get_current_user
 from src.accounts.models import User
-from src.accounts.routers import get_current_user
 
 
 async def _ensure_moderator(current_user: User = Depends(get_current_user)) -> User:

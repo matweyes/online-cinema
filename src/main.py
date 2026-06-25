@@ -23,8 +23,6 @@ app.include_router(genres_router, prefix="/api/v1/genres", tags=["Genres"])
 app.include_router(cart_router, prefix="/api/v1/cart", tags=["Cart"])
 app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
-# Keep legacy admin user management routes available under accounts for compatibility
-app.include_router(admin_router, prefix="/api/v1/accounts", tags=["Accounts"])
 
 
 @app.get("/api/health", response_model=StatusResponse)

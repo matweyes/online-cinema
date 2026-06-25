@@ -4,15 +4,15 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from src.accounts import enums
-from src.accounts.helpers import admin_required, get_current_user, get_user_by_id
-from src.cart.models import Cart, CartItem
+from src.accounts.helpers import admin_required, get_current_user
+from src.cart.models import Cart, CartItem, Purchase
 from src.database import get_db
 from src.general_schemas import StatusResponse
+from src.orders.helpers import get_order_with_access
 from src.orders.models import Order, OrderItem, OrderStatusEnum
 from src.orders.schemas import OrderResponse
 
@@ -46,7 +46,7 @@ async def create_order(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid movie in cart"
             )
-        total += Decimal(item.movie.price)
+        total += Decimal(str(item.movie.price))
 
     order = Order(user_id=current_user.id, total_amount=total)
     db.add(order)
@@ -87,16 +87,16 @@ async def my_orders(
 
 @router.get("/admin/all", response_model=list[OrderResponse])
 async def admin_all_orders(
-    status: str | None = None,
-    user_id: int | None = None,
+    filter_by_status: str | None = None,
+    filter_by_user_id: int | None = None,
     _admin=Depends(admin_required),
     db: AsyncSession = Depends(get_db),
 ) -> list[Order]:
     q_stmt = select(Order).options(selectinload(Order.items))
-    if status:
-        q_stmt = q_stmt.where(Order.status == status)
-    if user_id:
-        q_stmt = q_stmt.where(Order.user_id == user_id)
+    if filter_by_status is not None:
+        q_stmt = q_stmt.where(Order.status == filter_by_status)
+    if filter_by_user_id is not None:
+        q_stmt = q_stmt.where(Order.user_id == filter_by_user_id)
     q = await db.execute(q_stmt)
     orders = list(q.scalars().all())
     return orders
@@ -104,104 +104,42 @@ async def admin_all_orders(
 
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(
-    order_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+    order: Order = Depends(get_order_with_access),
 ) -> Order:
-    q = await db.execute(
-        select(Order).options(selectinload(Order.items)).where(Order.id == order_id)
-    )
-    order = q.scalars().first()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
-        )
-    # allow owner or admin
-    if order.user_id != current_user.id:
-        admin_user = await get_user_by_id(db, current_user.id)
-        group_name = getattr(admin_user.group, "name", None) if admin_user else None
-        if (
-            not admin_user
-            or not group_name
-            or group_name != enums.UserGroupEnum.ADMIN.value
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
-            )
     return order
 
 
 @router.post("/{order_id}/cancel", response_model=StatusResponse)
 async def cancel_order(
-    order_id: int,
-    current_user: User = Depends(get_current_user),
+    order: Order = Depends(get_order_with_access),
     db: AsyncSession = Depends(get_db),
 ):
-    q = await db.execute(select(Order).where(Order.id == order_id))
-    order = q.scalars().first()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
-        )
-    if order.user_id != current_user.id:
-        # allow admin to cancel
-        admin_user = await get_user_by_id(db, current_user.id)
-        group_name = getattr(admin_user.group, "name", None) if admin_user else None
-        if (
-            not admin_user
-            or not group_name
-            or group_name != enums.UserGroupEnum.ADMIN.value
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
-            )
     if order.status != OrderStatusEnum.PENDING.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending orders can be canceled",
         )
-    await db.execute(
-        update(Order)
-        .where(Order.id == order_id)
-        .values(status=OrderStatusEnum.CANCELED.value)
-    )
+    order.status = OrderStatusEnum.CANCELED.value
     await db.commit()
     return StatusResponse(status="canceled")
 
 
 @router.post("/{order_id}/pay", response_model=StatusResponse)
 async def pay_order(
-    order_id: int,
-    current_user: User = Depends(get_current_user),
+    order: Order = Depends(get_order_with_access),
     db: AsyncSession = Depends(get_db),
 ):
-    q = await db.execute(select(Order).where(Order.id == order_id))
-    order = q.scalars().first()
-    if not order:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Order not found"
-        )
-    if order.user_id != current_user.id:
-        # allow admin to mark as paid
-        admin_user = await get_user_by_id(db, current_user.id)
-        group_name = getattr(admin_user.group, "name", None) if admin_user else None
-        if (
-            not admin_user
-            or not group_name
-            or group_name != enums.UserGroupEnum.ADMIN.value
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="Admin required"
-            )
     if order.status != OrderStatusEnum.PENDING.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending orders can be paid",
         )
-    await db.execute(
-        update(Order)
-        .where(Order.id == order_id)
-        .values(status=OrderStatusEnum.PAID.value)
-    )
+    # load order items to create purchase records
+    q = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    order_items = q.scalars().all()
+    for oi in order_items:
+        db.add(Purchase(user_id=order.user_id, movie_id=oi.movie_id))
+
+    order.status = OrderStatusEnum.PAID.value
     await db.commit()
     return StatusResponse(status="paid")

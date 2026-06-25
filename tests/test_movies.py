@@ -1,37 +1,7 @@
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 
-from src.accounts import enums
-from src.accounts.models import User, UserGroup
-from src.accounts.routers import get_password_hash
-from tests.conftest import async_session_test
-
-
-async def create_moderator(
-    session_factory, email: str, password: str
-) -> tuple[int, str]:
-    async with session_factory() as session:
-        q = await session.execute(
-            select(UserGroup).where(
-                UserGroup.name == enums.UserGroupEnum.MODERATOR.value
-            )
-        )  # type: ignore
-        grp = q.scalars().first()
-        if not grp:
-            grp = UserGroup(name=enums.UserGroupEnum.MODERATOR.value)
-            session.add(grp)
-            await session.commit()
-            await session.refresh(grp)
-
-        admin_hashed = get_password_hash(password)
-        user = User(
-            email=email, hashed_password=admin_hashed, is_active=True, group_id=grp.id
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user.id, password
+from tests.conftest import async_session_test, create_moderator
 
 
 @pytest.mark.asyncio
@@ -114,7 +84,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # create normal user via API and activate
     user_email = "user_movies@example.com"
-    user_pass = "userpass"
+    user_pass = "Userpass_1"
     r = await client.post(
         "/api/v1/accounts/register", json={"email": user_email, "password": user_pass}
     )
@@ -159,7 +129,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # like comment
     r = await client.post(
-        f"/api/v1/movies/comments/{comment_id}/likes",
+        f"/api/v1/movies/{movie_id}/comments/{comment_id}/likes",
         headers={"Authorization": f"Bearer {user_access}"},
     )
     assert r.status_code == 200

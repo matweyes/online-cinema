@@ -5,36 +5,18 @@ from httpx import AsyncClient
 from sqlalchemy import select
 
 from src.movies.models import Movie
-from tests.conftest import async_session_test
-
-
-async def register_and_activate(client: AsyncClient, email: str, password: str) -> str:
-    r = await client.post(
-        "/api/v1/accounts/register", json={"email": email, "password": password}
-    )
-    assert r.status_code == 201
-    token = r.json()["activation_token"]
-    r = await client.post("/api/v1/accounts/activation", json={"token": token})
-    assert r.status_code == 200
-    return token
-
-
-async def login(client: AsyncClient, email: str, password: str):
-    r = await client.post(
-        "/api/v1/accounts/login", json={"username": email, "password": password}
-    )
-    assert r.status_code == 200
-    data = r.json()
-    return data["access_token"]
+from tests.conftest import activate_user, async_session_test, login_user, register_user
 
 
 @pytest.mark.asyncio
 async def test_orders_flow(client: AsyncClient):
     # user who will create orders
     email = "orderuser@example.com"
-    password = "orderpass"
-    await register_and_activate(client, email, password)
-    access = await login(client, email, password)
+    password = "Orderpass_1"
+    token = await register_user(client, email, password)
+    await activate_user(client, token)
+    access = await login_user(client, email, password)
+    access_token = access[0]
 
     # create a movie
     async with async_session_test() as session:
@@ -56,13 +38,13 @@ async def test_orders_flow(client: AsyncClient):
     r = await client.post(
         "/api/v1/cart/items",
         json={"movie_id": movie_id},
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 201
 
     # create order from cart
     r = await client.post(
-        "/api/v1/orders/", headers={"Authorization": f"Bearer {access}"}
+        "/api/v1/orders/", headers={"Authorization": f"Bearer {access_token}"}
     )
     assert r.status_code == 201
     order = r.json()
@@ -72,7 +54,7 @@ async def test_orders_flow(client: AsyncClient):
 
     # get my orders
     r = await client.get(
-        "/api/v1/orders/", headers={"Authorization": f"Bearer {access}"}
+        "/api/v1/orders/", headers={"Authorization": f"Bearer {access_token}"}
     )
     assert r.status_code == 200
     orders = r.json()
@@ -80,7 +62,8 @@ async def test_orders_flow(client: AsyncClient):
 
     # get order details
     r = await client.get(
-        f"/api/v1/orders/{order_id}", headers={"Authorization": f"Bearer {access}"}
+        f"/api/v1/orders/{order_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 200
     od = r.json()
@@ -89,7 +72,7 @@ async def test_orders_flow(client: AsyncClient):
     # cancel order
     r = await client.post(
         f"/api/v1/orders/{order_id}/cancel",
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 200
     assert r.json().get("status") == "canceled"
@@ -97,7 +80,7 @@ async def test_orders_flow(client: AsyncClient):
     # cancelling again should fail
     r = await client.post(
         f"/api/v1/orders/{order_id}/cancel",
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 400
 
@@ -106,11 +89,11 @@ async def test_orders_flow(client: AsyncClient):
     r = await client.post(
         "/api/v1/cart/items",
         json={"movie_id": movie_id},
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 201
     r = await client.post(
-        "/api/v1/orders/", headers={"Authorization": f"Bearer {access}"}
+        "/api/v1/orders/", headers={"Authorization": f"Bearer {access_token}"}
     )
     assert r.status_code == 201
     order2 = r.json()
@@ -118,15 +101,17 @@ async def test_orders_flow(client: AsyncClient):
 
     # pay order
     r = await client.post(
-        f"/api/v1/orders/{order2_id}/pay", headers={"Authorization": f"Bearer {access}"}
+        f"/api/v1/orders/{order2_id}/pay",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 200
     assert r.json().get("status") == "paid"
 
     # admin all orders
     admin_email = "admin@example.com"
-    admin_pass = "adminpass"
-    await register_and_activate(client, admin_email, admin_pass)
+    admin_pass = "Adminpass_1"
+    token = await register_user(client, admin_email, admin_pass)
+    await activate_user(client, token)
     # promote to admin in DB
     async with async_session_test() as session:
         # create admin group if not exists and set user's group
@@ -146,9 +131,11 @@ async def test_orders_flow(client: AsyncClient):
         session.add(au)
         await session.commit()
 
-    admin_access = await login(client, admin_email, admin_pass)
+    admin_access = await login_user(client, admin_email, admin_pass)
+    admin_access_token = admin_access[0]
     r = await client.get(
-        "/api/v1/orders/admin/all", headers={"Authorization": f"Bearer {admin_access}"}
+        "/api/v1/orders/admin/all",
+        headers={"Authorization": f"Bearer {admin_access_token}"},
     )
     assert r.status_code == 200
     all_orders = r.json()

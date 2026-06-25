@@ -4,35 +4,17 @@ import pytest
 from httpx import AsyncClient
 
 from src.movies.models import Movie
-from tests.conftest import async_session_test
-
-
-async def register_and_activate(client: AsyncClient, email: str, password: str) -> str:
-    r = await client.post(
-        "/api/v1/accounts/register", json={"email": email, "password": password}
-    )
-    assert r.status_code == 201
-    token = r.json()["activation_token"]
-    r = await client.post("/api/v1/accounts/activation", json={"token": token})
-    assert r.status_code == 200
-    return token
-
-
-async def login(client: AsyncClient, email: str, password: str):
-    r = await client.post(
-        "/api/v1/accounts/login", json={"username": email, "password": password}
-    )
-    assert r.status_code == 200
-    data = r.json()
-    return data["access_token"]
+from tests.conftest import activate_user, async_session_test, login_user, register_user
 
 
 @pytest.mark.asyncio
 async def test_cart_flow(client: AsyncClient):
     email = "cartuser@example.com"
-    password = "cartpass"
-    await register_and_activate(client, email, password)
-    access = await login(client, email, password)
+    password = "Cartpass_1"
+    token = await register_user(client, email, password)
+    await activate_user(client, token)
+    access = await login_user(client, email, password)
+    access_token = access[0]
 
     # Create a movie in DB
     async with async_session_test() as session:
@@ -51,7 +33,9 @@ async def test_cart_flow(client: AsyncClient):
         movie_id = m.id
 
     # Cart should be empty
-    r = await client.get("/api/v1/cart/", headers={"Authorization": f"Bearer {access}"})
+    r = await client.get(
+        "/api/v1/cart/", headers={"Authorization": f"Bearer {access_token}"}
+    )
     assert r.status_code == 200
     assert r.json()["items"] == []
 
@@ -59,7 +43,7 @@ async def test_cart_flow(client: AsyncClient):
     r = await client.post(
         "/api/v1/cart/items",
         json={"movie_id": movie_id},
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 201
     item = r.json()
@@ -69,12 +53,14 @@ async def test_cart_flow(client: AsyncClient):
     r = await client.post(
         "/api/v1/cart/items",
         json={"movie_id": movie_id},
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 400
 
     # Get cart now contains the item
-    r = await client.get("/api/v1/cart/", headers={"Authorization": f"Bearer {access}"})
+    r = await client.get(
+        "/api/v1/cart/", headers={"Authorization": f"Bearer {access_token}"}
+    )
     assert r.status_code == 200
     items = r.json()["items"]
     assert len(items) == 1
@@ -82,14 +68,16 @@ async def test_cart_flow(client: AsyncClient):
 
     # Remove item
     r = await client.delete(
-        f"/api/v1/cart/items/{movie_id}", headers={"Authorization": f"Bearer {access}"}
+        f"/api/v1/cart/items/{movie_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 200
     assert r.json().get("status") == "deleted"
 
     # Removing again -> 404
     r = await client.delete(
-        f"/api/v1/cart/items/{movie_id}", headers={"Authorization": f"Bearer {access}"}
+        f"/api/v1/cart/items/{movie_id}",
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 404
 
@@ -97,15 +85,75 @@ async def test_cart_flow(client: AsyncClient):
     r = await client.post(
         "/api/v1/cart/items",
         json={"movie_id": movie_id},
-        headers={"Authorization": f"Bearer {access}"},
+        headers={"Authorization": f"Bearer {access_token}"},
     )
     assert r.status_code == 201
     r = await client.delete(
-        "/api/v1/cart/items", headers={"Authorization": f"Bearer {access}"}
+        "/api/v1/cart/items", headers={"Authorization": f"Bearer {access_token}"}
     )
     assert r.status_code == 200
     assert r.json().get("status") == "cleared"
 
-    r = await client.get("/api/v1/cart/", headers={"Authorization": f"Bearer {access}"})
+    r = await client.get(
+        "/api/v1/cart/", headers={"Authorization": f"Bearer {access_token}"}
+    )
     assert r.status_code == 200
     assert r.json()["items"] == []
+
+
+@pytest.mark.asyncio
+async def test_cannot_add_purchased_movie_to_cart(client: AsyncClient):
+    email = "purchaseuser@example.com"
+    password = "Purchasepass_1"
+    token = await register_user(client, email, password)
+    await activate_user(client, token)
+    access = await login_user(client, email, password)
+    access_token = access[0]
+
+    # Create a movie in DB
+    async with async_session_test() as session:
+        m = Movie(
+            uuid=str(uuid4()),
+            name="Purchase Test Movie",
+            year=2022,
+            time=90,
+            imdb=7.0,
+            votes=200,
+            price=14.99,
+        )
+        session.add(m)
+        await session.commit()
+        await session.refresh(m)
+        movie_id = m.id
+
+    # Add to cart
+    r = await client.post(
+        "/api/v1/cart/items",
+        json={"movie_id": movie_id},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert r.status_code == 201
+
+    # Create order from cart
+    r = await client.post(
+        "/api/v1/orders/", headers={"Authorization": f"Bearer {access_token}"}
+    )
+    assert r.status_code == 201
+    order_id = r.json()["id"]
+
+    # Pay the order (this should create Purchase records)
+    r = await client.post(
+        f"/api/v1/orders/{order_id}/pay",
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert r.status_code == 200
+    assert r.json().get("status") == "paid"
+
+    # Now try to add the same movie to cart - should fail
+    r = await client.post(
+        "/api/v1/cart/items",
+        json={"movie_id": movie_id},
+        headers={"Authorization": f"Bearer {access_token}"},
+    )
+    assert r.status_code == 400
+    assert "already purchased" in r.json()["detail"].lower()

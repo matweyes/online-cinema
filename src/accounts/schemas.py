@@ -1,8 +1,30 @@
+import re
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from src.accounts import enums
+from src.accounts.enums import UserGroupEnum
+
+
+def _validate_password_complexity(value: str) -> str:
+    """Shared password-complexity rules used by multiple schemas."""
+    if not re.search(r"[A-Z]", value):
+        raise ValueError("Password must contain at least one uppercase letter")
+
+    if not re.search(r"[a-z]", value):
+        raise ValueError("Password must contain at least one lowercase letter")
+
+    if not re.search(r"\d", value):
+        raise ValueError("Password must contain at least one digit")
+
+    if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value):
+        raise ValueError("Password must contain at least one special character")
+
+    if re.search(r"\s", value):
+        raise ValueError("Password cannot contain spaces")
+
+    return value
 
 
 class Token(BaseModel):
@@ -13,7 +35,15 @@ class Token(BaseModel):
 
 class RegisterSchema(BaseModel):
     email: EmailStr
-    password: str = Field(min_length=6)
+    password: str = Field(
+        min_length=8,
+        max_length=128,
+    )
+
+    @field_validator("password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_complexity(value)
 
 
 class ActivateSchema(BaseModel):
@@ -39,7 +69,12 @@ class RefreshSchema(BaseModel):
 
 class ChangePasswordSchema(BaseModel):
     old_password: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_complexity(value)
 
 
 class ForgotPasswordSchema(BaseModel):
@@ -48,7 +83,12 @@ class ForgotPasswordSchema(BaseModel):
 
 class ResetPasswordSchema(BaseModel):
     token: str
-    new_password: str = Field(min_length=6)
+    new_password: str = Field(min_length=8, max_length=128)
+
+    @field_validator("new_password")
+    @classmethod
+    def validate_password(cls, value: str) -> str:
+        return _validate_password_complexity(value)
 
 
 class ProfileUpdateSchema(BaseModel):
@@ -89,4 +129,4 @@ class ResetResponse(BaseModel):
 
 
 class GroupChangeSchema(BaseModel):
-    group: str
+    group: UserGroupEnum

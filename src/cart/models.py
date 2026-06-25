@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import DateTime, ForeignKey, Integer, UniqueConstraint, func
@@ -40,3 +41,48 @@ class CartItem(Base):
     )
 
     movie: Mapped[Any] = relationship("Movie", backref="cart_items")
+
+
+class Purchase(Base):
+    __tablename__ = "purchases"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+    )
+
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id"),
+        nullable=False,
+        index=True,
+    )
+
+    movie_id: Mapped[int] = mapped_column(
+        ForeignKey("movies.id"),
+        nullable=False,
+        index=True,
+    )
+
+    purchased_at: Mapped[datetime] = mapped_column(
+        DateTime,
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "user_id",
+            "movie_id",
+            name="uq_user_movie_purchase",
+        ),
+    )
+
+    user: Mapped[Any] = relationship(
+        "User",
+        backref="purchases",
+    )
+
+    movie: Mapped[Any] = relationship(
+        "Movie",
+        backref="purchases",
+    )

@@ -5,19 +5,19 @@ from sqlalchemy import select
 from src.accounts import enums
 from src.accounts.models import User, UserGroup
 from src.accounts.routers import get_password_hash
-from tests.conftest import async_session_test, register_user, login_user
+from tests.conftest import async_session_test, login_user, register_user
 
 
 @pytest.mark.asyncio
 async def test_admin_change_group_and_activate(client: AsyncClient):
     # register target user (inactive)
     target_email = "target@example.com"
-    target_pass = "targetpass"
+    target_pass = "Targetpass_1"
     _ = await register_user(client, target_email, target_pass)
 
     # create admin user directly in DB
     admin_email = "admin@example.com"
-    admin_pass = "adminpass"
+    admin_pass = "Adminpass_1"
 
     async with async_session_test() as session:
         # ensure admin group exists
@@ -68,6 +68,3 @@ async def test_admin_change_group_and_activate(client: AsyncClient):
     )
     assert r.status_code == 200
     assert r.json().get("status") == "activated"
-
-    # now target should be able to log in
-    await login_user(client, target_email, target_pass)

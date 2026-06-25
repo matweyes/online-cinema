@@ -114,7 +114,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # create normal user via API and activate
     user_email = "user_movies@example.com"
-    user_pass = "userpass"
+    user_pass = "Userpass_1"
     r = await client.post(
         "/api/v1/accounts/register", json={"email": user_email, "password": user_pass}
     )
@@ -159,7 +159,7 @@ async def test_movies_crud_and_interactions(client: AsyncClient):
 
     # like comment
     r = await client.post(
-        f"/api/v1/movies/comments/{comment_id}/likes",
+        f"/api/v1/movies/{movie_id}/comments/{comment_id}/likes",
         headers={"Authorization": f"Bearer {user_access}"},
     )
     assert r.status_code == 200

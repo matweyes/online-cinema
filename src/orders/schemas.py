@@ -5,7 +5,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict
 
 
-class OrderItem(BaseModel):
+class OrderItemResponse(BaseModel):
     id: int
     movie_id: int
     price_at_order: float
@@ -19,6 +19,6 @@ class OrderResponse(BaseModel):
     created_at: datetime
     status: str
     total_amount: float | None
-    items: list[OrderItem]
+    items: list[OrderItemResponse]
 
     model_config = ConfigDict(from_attributes=True)

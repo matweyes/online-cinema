@@ -1,13 +1,13 @@
 import pytest
 from httpx import AsyncClient
 
-from tests.conftest import register_user, activate_user, login_user
+from tests.conftest import activate_user, login_user, register_user
 
 
 @pytest.mark.asyncio
 async def test_register_activate_login_refresh_logout_flow(client: AsyncClient):
     email = "user1@example.com"
-    password = "strongpass"
+    password = "Strongpass_1"
 
     token = await register_user(client, email, password)
 
@@ -51,7 +51,7 @@ async def test_register_activate_login_refresh_logout_flow(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_resend_activation(client: AsyncClient):
     email = "user2@example.com"
-    password = "strongpass"
+    password = "Strongpass_1"
     token1 = await register_user(client, email, password)
 
     r = await client.post("/api/v1/accounts/activation/resend", json={"email": email})
@@ -66,8 +66,8 @@ async def test_resend_activation(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_change_password(client: AsyncClient):
     email = "user3@example.com"
-    old = "oldpass"
-    new = "newpass123"
+    old = "Oldpass_1"
+    new = "Newpass_123"
     token = await register_user(client, email, old)
     await activate_user(client, token)
 
@@ -94,7 +94,7 @@ async def test_change_password(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_forgot_and_reset_password(client: AsyncClient):
     email = "user4@example.com"
-    password = "initialpass"
+    password = "Initialpass_1"
     new_pass = "resetpass123"
     token = await register_user(client, email, password)
     await activate_user(client, token)
@@ -118,7 +118,7 @@ async def test_forgot_and_reset_password(client: AsyncClient):
 @pytest.mark.asyncio
 async def test_profile_update(client: AsyncClient):
     email = "user5@example.com"
-    password = "profilepass"
+    password = "Profilepass_1"
     token = await register_user(client, email, password)
     await activate_user(client, token)
     access, _ = await login_user(client, email, password)
@@ -130,4 +130,3 @@ async def test_profile_update(client: AsyncClient):
     )
     assert r.status_code == 200
     assert r.json().get("status") == "profile_updated"
-

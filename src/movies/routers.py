@@ -5,8 +5,8 @@ from fastapi import APIRouter, Body, Depends, HTTPException, Query, status
 from sqlalchemy import delete, desc, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.accounts.models import User
 from src.accounts.helpers import get_current_user
+from src.accounts.models import User
 from src.cart.models import CartItem
 from src.database import get_db
 from src.general_schemas import StatusResponse
@@ -63,7 +63,7 @@ async def list_favorites(current_user: User = Depends(get_current_user)):
     return []
 
 
-@router.post("/comments/{comment_id}/likes", response_model=StatusResponse)
+@router.post("/{movie_id}/comments/{comment_id}/likes", response_model=StatusResponse)
 async def like_comment(
     comment_id: int,
     current_user: User = Depends(get_current_user),

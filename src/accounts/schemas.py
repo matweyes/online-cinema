@@ -7,6 +7,26 @@ from src.accounts import enums
 from src.accounts.enums import UserGroupEnum
 
 
+def _validate_password_complexity(value: str) -> str:
+    """Shared password-complexity rules used by multiple schemas."""
+    if not re.search(r"[A-Z]", value):
+        raise ValueError("Password must contain at least one uppercase letter")
+
+    if not re.search(r"[a-z]", value):
+        raise ValueError("Password must contain at least one lowercase letter")
+
+    if not re.search(r"\d", value):
+        raise ValueError("Password must contain at least one digit")
+
+    if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value):
+        raise ValueError("Password must contain at least one special character")
+
+    if re.search(r"\s", value):
+        raise ValueError("Password cannot contain spaces")
+
+    return value
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str
@@ -23,22 +43,7 @@ class RegisterSchema(BaseModel):
     @field_validator("password")
     @classmethod
     def validate_password(cls, value: str) -> str:
-        if not re.search(r"[A-Z]", value):
-            raise ValueError("Password must contain at least one uppercase letter")
-
-        if not re.search(r"[a-z]", value):
-            raise ValueError("Password must contain at least one lowercase letter")
-
-        if not re.search(r"\d", value):
-            raise ValueError("Password must contain at least one digit")
-
-        if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value):
-            raise ValueError("Password must contain at least one special character")
-
-        if re.search(r"\s", value):
-            raise ValueError("Password cannot contain spaces")
-
-        return value
+        return _validate_password_complexity(value)
 
 
 class ActivateSchema(BaseModel):
@@ -69,22 +74,7 @@ class ChangePasswordSchema(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, value: str) -> str:
-        if not re.search(r"[A-Z]", value):
-            raise ValueError("Password must contain at least one uppercase letter")
-
-        if not re.search(r"[a-z]", value):
-            raise ValueError("Password must contain at least one lowercase letter")
-
-        if not re.search(r"\d", value):
-            raise ValueError("Password must contain at least one digit")
-
-        if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value):
-            raise ValueError("Password must contain at least one special character")
-
-        if re.search(r"\s", value):
-            raise ValueError("Password cannot contain spaces")
-
-        return value
+        return _validate_password_complexity(value)
 
 
 class ForgotPasswordSchema(BaseModel):
@@ -98,22 +88,7 @@ class ResetPasswordSchema(BaseModel):
     @field_validator("new_password")
     @classmethod
     def validate_password(cls, value: str) -> str:
-        if not re.search(r"[A-Z]", value):
-            raise ValueError("Password must contain at least one uppercase letter")
-
-        if not re.search(r"[a-z]", value):
-            raise ValueError("Password must contain at least one lowercase letter")
-
-        if not re.search(r"\d", value):
-            raise ValueError("Password must contain at least one digit")
-
-        if not re.search(r"[!@#$%^&*()_+\-=\[\]{};':\"\\|,.<>/?]", value):
-            raise ValueError("Password must contain at least one special character")
-
-        if re.search(r"\s", value):
-            raise ValueError("Password cannot contain spaces")
-
-        return value
+        return _validate_password_complexity(value)
 
 
 class ProfileUpdateSchema(BaseModel):

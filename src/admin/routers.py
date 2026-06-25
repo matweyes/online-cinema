@@ -28,10 +28,12 @@ async def change_user_group(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    qg = await db.execute(select(UserGroup).where(UserGroup.name == data.group))
+    qg = await db.execute(
+        select(UserGroup).where(UserGroup.name == data.group.value)
+    )
     group = qg.scalars().first()
     if not group:
-        group = UserGroup(name=data.group)
+        group = UserGroup(name=data.group.value)
         db.add(group)
         await db.commit()
         await db.refresh(group)

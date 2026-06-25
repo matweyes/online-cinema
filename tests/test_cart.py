@@ -149,7 +149,7 @@ async def test_cannot_add_purchased_movie_to_cart(client: AsyncClient):
     assert r.status_code == 200
     assert r.json().get("status") == "paid"
 
-    # Now try to add the same movie to cart тАФ should fail
+    # Now try to add the same movie to cart - should fail
     r = await client.post(
         "/api/v1/cart/items",
         json={"movie_id": movie_id},

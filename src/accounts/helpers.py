@@ -104,10 +104,10 @@ async def get_current_user_id(token: str = Depends(oauth2_scheme)) -> int:
             unverified = jwt.get_unverified_claims(token)
         except Exception:
             unverified = None
-        logger.exception("JWT decode failed: %s", e)
+        logger.exception("JWT decode failed: %s, claims: %s", e, unverified)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"JWT decode failed: {e}; claims={unverified}",
+            detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from e
 
@@ -172,5 +172,10 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="User not found",
             headers={"WWW-Authenticate": "Bearer"},
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
         )
     return user

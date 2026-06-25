@@ -95,7 +95,7 @@ async def test_change_password(client: AsyncClient):
 async def test_forgot_and_reset_password(client: AsyncClient):
     email = "user4@example.com"
     password = "Initialpass_1"
-    new_pass = "resetpass123"
+    new_pass = "Resetpass_123"
     token = await register_user(client, email, password)
     await activate_user(client, token)
 

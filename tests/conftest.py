@@ -1,7 +1,11 @@
 import pytest
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
+from src.accounts import enums
+from src.accounts.helpers import get_password_hash
+from src.accounts.models import User, UserGroup
 from src.database import Base, get_db
 from src.main import app
 
@@ -68,3 +72,29 @@ async def login_user(client: AsyncClient, email: str, password: str):
     data = resp.json()
     assert "access_token" in data and "refresh_token" in data
     return data["access_token"], data["refresh_token"]
+
+
+async def create_moderator(
+    session_factory, email: str, password: str
+) -> tuple[int, str]:
+    async with session_factory() as session:
+        q = await session.execute(
+            select(UserGroup).where(
+                UserGroup.name == enums.UserGroupEnum.MODERATOR.value
+            )
+        )  # type: ignore
+        grp = q.scalars().first()
+        if not grp:
+            grp = UserGroup(name=enums.UserGroupEnum.MODERATOR.value)
+            session.add(grp)
+            await session.commit()
+            await session.refresh(grp)
+
+        hashed = get_password_hash(password)
+        user = User(
+            email=email, hashed_password=hashed, is_active=True, group_id=grp.id
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+        return user.id, password

@@ -74,7 +74,7 @@ async def add_item(
 
     if already_purchased:
         raise HTTPException(
-            status_code=400,
+            status_code=status.HTTP_400_BAD_REQUEST,
             detail="Movie already purchased",
         )
     # ensure cart exists

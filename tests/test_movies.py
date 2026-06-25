@@ -1,37 +1,7 @@
 import pytest
 from httpx import AsyncClient
-from sqlalchemy import select
 
-from src.accounts import enums
-from src.accounts.models import User, UserGroup
-from src.accounts.routers import get_password_hash
-from tests.conftest import async_session_test
-
-
-async def create_moderator(
-    session_factory, email: str, password: str
-) -> tuple[int, str]:
-    async with session_factory() as session:
-        q = await session.execute(
-            select(UserGroup).where(
-                UserGroup.name == enums.UserGroupEnum.MODERATOR.value
-            )
-        )  # type: ignore
-        grp = q.scalars().first()
-        if not grp:
-            grp = UserGroup(name=enums.UserGroupEnum.MODERATOR.value)
-            session.add(grp)
-            await session.commit()
-            await session.refresh(grp)
-
-        admin_hashed = get_password_hash(password)
-        user = User(
-            email=email, hashed_password=admin_hashed, is_active=True, group_id=grp.id
-        )
-        session.add(user)
-        await session.commit()
-        await session.refresh(user)
-        return user.id, password
+from tests.conftest import async_session_test, create_moderator
 
 
 @pytest.mark.asyncio

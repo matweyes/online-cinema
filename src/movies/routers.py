@@ -30,6 +30,7 @@ from src.movies.schemas import (
 from src.orders.models import OrderItem
 
 router = APIRouter()
+ALLOWED_SORT_FIELDS = {"price", "year", "meta_score"}
 
 
 @router.get("/", response_model=list[MovieResponse])
@@ -45,12 +46,17 @@ async def list_movies(
         like = f"%{q}%"
         stmt = stmt.where(or_(Movie.name.ilike(like), Movie.description.ilike(like)))
     if sort:
+        col = sort[1:] if sort.startswith("-") else sort
+        if col not in ALLOWED_SORT_FIELDS:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid sort field '{col}'. "
+                f"Allowed: {', '.join(sorted(ALLOWED_SORT_FIELDS))}",
+            )
         if sort.startswith("-"):
-            col = sort[1:]
-            stmt = stmt.order_by(desc(getattr(Movie, col, Movie.id)))
+            stmt = stmt.order_by(desc(getattr(Movie, col)))
         else:
-            col = sort
-            stmt = stmt.order_by(getattr(Movie, col, Movie.id))
+            stmt = stmt.order_by(getattr(Movie, col))
     stmt = stmt.offset((page - 1) * size).limit(size)
     r = await db.execute(stmt)
     return r.scalars().all()
@@ -65,16 +71,26 @@ async def list_favorites(current_user: User = Depends(get_current_user)):
 
 @router.post("/{movie_id}/comments/{comment_id}/likes", response_model=StatusResponse)
 async def like_comment(
+    movie_id: int,
     comment_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # not persisted yet
-    r = await db.execute(select(Comment).where(Comment.id == comment_id))
+    # validate movie exists
+    r = await db.execute(select(Movie).where(Movie.id == movie_id))
+    if not r.scalars().first():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Movie not found"
+        )
+    # validate comment exists and belongs to the movie
+    r = await db.execute(
+        select(Comment).where(Comment.id == comment_id, Comment.movie_id == movie_id)
+    )
     if not r.scalars().first():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Comment not found"
         )
+    # not persisted yet
     return StatusResponse(status="liked")
 
 

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from src.accounts.helpers import admin_required, get_current_user
-from src.cart.models import Cart, CartItem
+from src.cart.models import Cart, CartItem, Purchase
 from src.database import get_db
 from src.general_schemas import StatusResponse
 from src.orders.helpers import get_order_with_access
@@ -46,7 +46,7 @@ async def create_order(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid movie in cart"
             )
-        total += Decimal(item.movie.price)
+        total += Decimal(str(item.movie.price))
 
     order = Order(user_id=current_user.id, total_amount=total)
     db.add(order)
@@ -87,16 +87,16 @@ async def my_orders(
 
 @router.get("/admin/all", response_model=list[OrderResponse])
 async def admin_all_orders(
-    status: str | None = None,
-    user_id: int | None = None,
+    filter_by_status: str | None = None,
+    filter_by_user_id: int | None = None,
     _admin=Depends(admin_required),
     db: AsyncSession = Depends(get_db),
 ) -> list[Order]:
     q_stmt = select(Order).options(selectinload(Order.items))
-    if status:
-        q_stmt = q_stmt.where(Order.status == status)
-    if user_id:
-        q_stmt = q_stmt.where(Order.user_id == user_id)
+    if filter_by_status is not None:
+        q_stmt = q_stmt.where(Order.status == filter_by_status)
+    if filter_by_user_id is not None:
+        q_stmt = q_stmt.where(Order.user_id == filter_by_user_id)
     q = await db.execute(q_stmt)
     orders = list(q.scalars().all())
     return orders
@@ -134,6 +134,12 @@ async def pay_order(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Only pending orders can be paid",
         )
+    # load order items to create purchase records
+    q = await db.execute(select(OrderItem).where(OrderItem.order_id == order.id))
+    order_items = q.scalars().all()
+    for oi in order_items:
+        db.add(Purchase(user_id=order.user_id, movie_id=oi.movie_id))
+
     order.status = OrderStatusEnum.PAID.value
     await db.commit()
     return StatusResponse(status="paid")

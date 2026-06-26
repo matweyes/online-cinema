@@ -37,7 +37,8 @@ ALLOWED_SORT_FIELDS = {"price", "year", "meta_score"}
     "/",
     response_model=list[MovieResponse],
     summary="List movies",
-    description="Retrieve a paginated list of movies. Supports text search and sorting.",
+    description="Retrieve a paginated list of movies. "
+    "Supports text search and sorting.",
 )
 async def list_movies(
     page: int = Query(1, ge=1, description="Page number (1-indexed)"),
@@ -87,7 +88,8 @@ async def list_favorites(current_user: User = Depends(get_current_user)):
     "/{movie_id}/comments/{comment_id}/likes",
     response_model=StatusResponse,
     summary="Like a comment",
-    description="Toggle a like on a specific comment. The comment must belong to the given movie.",
+    description="Toggle a like on a specific comment. "
+    "The comment must belong to the given movie.",
     responses={
         404: {"description": "Movie or comment not found"},
     },
@@ -238,7 +240,8 @@ async def update_movie(
     "/{movie_id}",
     response_model=StatusResponse,
     summary="Delete a movie",
-    description="Delete a movie and its related data (comments, genre associations, etc.). "
+    description="Delete a movie and its related data "
+    "(comments, genre associations, etc.). "
     "Cannot delete a movie that has been purchased. "
     "Requires **moderator** or **admin** role.",
     responses={

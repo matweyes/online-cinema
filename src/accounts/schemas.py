@@ -34,11 +34,15 @@ class Token(BaseModel):
 
 
 class RegisterSchema(BaseModel):
-    email: EmailStr = Field(..., description="User email address", examples=["user@example.com"])
+    email: EmailStr = Field(
+        ..., description="User email address", examples=["user@example.com"]
+    )
     password: str = Field(
         min_length=8,
         max_length=128,
-        description="Password (8-128 chars, must include uppercase, lowercase, digit, and special character, no spaces)",
+        description="Password "
+        "(8-128 chars, must include "
+        "uppercase, lowercase, digit, and special character, no spaces)",
         examples=["MyPass_123"],
     )
 
@@ -53,11 +57,15 @@ class ActivateSchema(BaseModel):
 
 
 class ResendActivationSchema(BaseModel):
-    email: EmailStr = Field(..., description="Email of the inactive account", examples=["user@example.com"])
+    email: EmailStr = Field(
+        ..., description="Email of the inactive account", examples=["user@example.com"]
+    )
 
 
 class LoginSchema(BaseModel):
-    username: EmailStr = Field(..., description="User email address", examples=["user@example.com"])
+    username: EmailStr = Field(
+        ..., description="User email address", examples=["user@example.com"]
+    )
     password: str = Field(..., description="Account password")
 
 
@@ -85,11 +93,15 @@ class ChangePasswordSchema(BaseModel):
 
 
 class ForgotPasswordSchema(BaseModel):
-    email: EmailStr = Field(..., description="Email of the account to reset", examples=["user@example.com"])
+    email: EmailStr = Field(
+        ..., description="Email of the account to reset", examples=["user@example.com"]
+    )
 
 
 class ResetPasswordSchema(BaseModel):
-    token: str = Field(..., description="Password-reset token from forgot-password endpoint")
+    token: str = Field(
+        ..., description="Password-reset token from forgot-password endpoint"
+    )
     new_password: str = Field(
         min_length=8,
         max_length=128,
@@ -106,9 +118,13 @@ class ResetPasswordSchema(BaseModel):
 class ProfileUpdateSchema(BaseModel):
     first_name: str | None = Field(None, description="First name", examples=["John"])
     last_name: str | None = Field(None, description="Last name", examples=["Doe"])
-    avatar: str | None = Field(None, description="Avatar URL", examples=["https://example.com/avatar.png"])
+    avatar: str | None = Field(
+        None, description="Avatar URL", examples=["https://example.com/avatar.png"]
+    )
     gender: enums.GenderEnum | None = Field(None, description="Gender (man / woman)")
-    date_of_birth: datetime | None = Field(None, description="Date of birth (ISO 8601)", examples=["1990-01-15T00:00:00"])
+    date_of_birth: datetime | None = Field(
+        None, description="Date of birth (ISO 8601)", examples=["1990-01-15T00:00:00"]
+    )
     info: str | None = Field(None, description="Short bio or additional info")
 
 
@@ -116,14 +132,18 @@ class UserResponse(BaseModel):
     id: int = Field(..., description="User ID")
     email: EmailStr = Field(..., description="User email")
     is_active: bool = Field(..., description="Whether the account is activated")
-    group: enums.UserGroupEnum | None = Field(None, description="User role (user / moderator / admin)")
+    group: enums.UserGroupEnum | None = Field(
+        None, description="User role (user / moderator / admin)"
+    )
 
     # Pydantic v2 configuration: read values from ORM attributes
     model_config = ConfigDict(from_attributes=True)
 
 
 class ActivationResponse(BaseModel):
-    activation_token: str = Field(..., description="Token to activate the account (sent via email in production)")
+    activation_token: str = Field(
+        ..., description="Token to activate the account (sent via email in production)"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -135,10 +155,14 @@ class AccessResponse(BaseModel):
 
 
 class ResetResponse(BaseModel):
-    reset_token: str = Field(..., description="Password-reset token (empty string if user not found)")
+    reset_token: str = Field(
+        ..., description="Password-reset token (empty string if user not found)"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class GroupChangeSchema(BaseModel):
-    group: UserGroupEnum = Field(..., description="Target role (user / moderator / admin)")
+    group: UserGroupEnum = Field(
+        ..., description="Target role (user / moderator / admin)"
+    )

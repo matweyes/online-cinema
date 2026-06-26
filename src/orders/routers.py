@@ -134,7 +134,8 @@ async def admin_all_orders(
     "/{order_id}",
     response_model=OrderResponse,
     summary="Get order details",
-    description="Retrieve a single order by ID. Accessible by the order owner or an admin.",
+    description="Retrieve a single order by ID. "
+    "Accessible by the order owner or an admin.",
     responses={
         403: {"description": "Not the order owner and not an admin"},
         404: {"description": "Order not found"},
@@ -150,7 +151,8 @@ async def get_order(
     "/{order_id}/cancel",
     response_model=StatusResponse,
     summary="Cancel an order",
-    description="Cancel a pending order. Only orders with status `pending` can be canceled.",
+    description="Cancel a pending order. "
+    "Only orders with status `pending` can be canceled.",
     responses={
         400: {"description": "Order is not in pending status"},
         403: {"description": "Not the order owner and not an admin"},

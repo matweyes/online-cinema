@@ -8,7 +8,9 @@ from pydantic import BaseModel, ConfigDict, Field
 class OrderItemResponse(BaseModel):
     id: int = Field(..., description="Order item ID")
     movie_id: int = Field(..., description="Purchased movie ID")
-    price_at_order: float = Field(..., description="Price at the time the order was placed")
+    price_at_order: float = Field(
+        ..., description="Price at the time the order was placed"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

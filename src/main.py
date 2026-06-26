@@ -46,7 +46,8 @@ app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
     response_model=StatusResponse,
     tags=["Health"],
     summary="Health check",
-    description="Simple liveness probe. Returns `{\"status\": \"ok\"}` when the service is running.",
+    description="Simple liveness probe. "
+    'Returns `{"status": "ok"}` when the service is running.',
 )
 async def health_check():
     return StatusResponse(status="ok")

@@ -20,7 +20,9 @@ class MovieResponse(BaseModel):
 
 
 class MovieCreate(BaseModel):
-    uuid: str | None = Field(None, description="Custom UUID (auto-generated if omitted)")
+    uuid: str | None = Field(
+        None, description="Custom UUID (auto-generated if omitted)"
+    )
     name: str = Field(..., description="Movie title", examples=["Inception"])
     year: int = Field(..., description="Release year", examples=[2010])
     time: int = Field(..., description="Duration in minutes", examples=[148])
@@ -45,7 +47,9 @@ class MovieUpdate(BaseModel):
     description: str | None = Field(None, description="Movie synopsis")
     price: float | None = Field(None, description="Purchase price")
     certification_id: int | None = Field(None, description="Certification ID (FK)")
-    genres: list[int] | None = Field(None, description="Replace genre associations with these IDs")
+    genres: list[int] | None = Field(
+        None, description="Replace genre associations with these IDs"
+    )
 
 
 class CommentResponse(BaseModel):
@@ -72,7 +76,9 @@ class GenreResponse(BaseModel):
 
 
 class GenreCreate(BaseModel):
-    name: str = Field(..., description="Genre name (must be unique)", examples=["Action"])
+    name: str = Field(
+        ..., description="Genre name (must be unique)", examples=["Action"]
+    )
 
 
 class GenreUpdate(BaseModel):

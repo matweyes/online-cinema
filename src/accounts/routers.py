@@ -295,8 +295,9 @@ async def change_password(
     "/forgot-password",
     response_model=ResetResponse,
     summary="Request password reset",
-    description="Request a password-reset token. If the email exists, a token is returned "
-    "(in production it would be sent via email). Returns an empty token if the user "
+    description="Request a password-reset token. If the email exists, "
+    "a token is returned (in production it would be "
+    "sent via email). Returns an empty token if the user "
     "is not found to avoid revealing account existence.",
 )
 async def forgot_password(
@@ -327,7 +328,8 @@ async def forgot_password(
     "/reset-password",
     response_model=StatusResponse,
     summary="Reset password",
-    description="Set a new password using the reset token from the forgot-password endpoint.",
+    description="Set a new password using "
+    "the reset token from the forgot-password endpoint.",
     responses={
         400: {"description": "Invalid / expired token or user not found"},
     },
@@ -364,7 +366,8 @@ async def reset_password(
     "/me",
     response_model=UserResponse,
     summary="Get current user",
-    description="Return the authenticated user's ID, email, activation status, and role.",
+    description="Return "
+    "the authenticated user's ID, email, activation status, and role.",
 )
 async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     # convert stored group name (string) to UserGroupEnum

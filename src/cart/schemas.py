@@ -13,7 +13,9 @@ class CartItemResponse(BaseModel):
 
 
 class CartResponse(BaseModel):
-    items: list[CartItemResponse] = Field(..., description="List of items currently in the cart")
+    items: list[CartItemResponse] = Field(
+        ..., description="List of items currently in the cart"
+    )
 
     model_config = ConfigDict(from_attributes=True)
 

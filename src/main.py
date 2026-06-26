@@ -11,6 +11,22 @@ from src.orders.routers import router as orders_router
 
 app = FastAPI(
     title=settings.APP_TITLE,
+    description=(
+        "REST API for an online cinema platform.\n\n"
+        "## Features\n"
+        "- **Accounts** — registration, activation, login/logout, JWT token refresh, "
+        "password change & reset, profile management\n"
+        "- **Movies** — browse, search, sort, CRUD (moderator+), comments, ratings, "
+        "likes, favorites\n"
+        "- **Genres** — list, CRUD (moderator+), movies-by-genre\n"
+        "- **Cart** — add / remove / clear items, purchased-movie guard\n"
+        "- **Orders** — create from cart, pay, cancel, admin overview\n"
+        "- **Admin** — change user roles, manual activation\n\n"
+        "## Authentication\n"
+        "Most endpoints require a **Bearer JWT** token in the `Authorization` header. "
+        "Obtain one via the `/api/v1/accounts/login` endpoint."
+    ),
+    version="0.1.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
     openapi_url="/api/openapi.json",
@@ -25,6 +41,12 @@ app.include_router(orders_router, prefix="/api/v1/orders", tags=["Orders"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["Admin"])
 
 
-@app.get("/api/health", response_model=StatusResponse)
+@app.get(
+    "/api/health",
+    response_model=StatusResponse,
+    tags=["Health"],
+    summary="Health check",
+    description="Simple liveness probe. Returns `{\"status\": \"ok\"}` when the service is running.",
+)
 async def health_check():
     return StatusResponse(status="ok")

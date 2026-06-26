@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -23,7 +23,18 @@ if TYPE_CHECKING:
 router = APIRouter()
 
 
-@router.post("/", response_model=OrderResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=OrderResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create order from cart",
+    description="Convert the current user's cart into an order. "
+    "All cart items become order items, the cart is cleared, and the order "
+    "is created with status `pending`.",
+    responses={
+        400: {"description": "Cart is empty or contains invalid movies"},
+    },
+)
 async def create_order(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):
@@ -72,7 +83,12 @@ async def create_order(
     return order_out
 
 
-@router.get("/", response_model=list[OrderResponse])
+@router.get(
+    "/",
+    response_model=list[OrderResponse],
+    summary="List my orders",
+    description="Retrieve all orders for the authenticated user.",
+)
 async def my_orders(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> list[Order]:
@@ -85,10 +101,22 @@ async def my_orders(
     return orders
 
 
-@router.get("/admin/all", response_model=list[OrderResponse])
+@router.get(
+    "/admin/all",
+    response_model=list[OrderResponse],
+    summary="List all orders (admin)",
+    description="Retrieve all orders across all users. "
+    "Supports optional filtering by status and/or user ID. "
+    "Requires **admin** role.",
+    responses={
+        403: {"description": "Admin role required"},
+    },
+)
 async def admin_all_orders(
-    filter_by_status: str | None = None,
-    filter_by_user_id: int | None = None,
+    filter_by_status: str | None = Query(
+        None, description="Filter by order status (pending / paid / canceled)"
+    ),
+    filter_by_user_id: int | None = Query(None, description="Filter by user ID"),
     _admin=Depends(admin_required),
     db: AsyncSession = Depends(get_db),
 ) -> list[Order]:
@@ -102,14 +130,33 @@ async def admin_all_orders(
     return orders
 
 
-@router.get("/{order_id}", response_model=OrderResponse)
+@router.get(
+    "/{order_id}",
+    response_model=OrderResponse,
+    summary="Get order details",
+    description="Retrieve a single order by ID. Accessible by the order owner or an admin.",
+    responses={
+        403: {"description": "Not the order owner and not an admin"},
+        404: {"description": "Order not found"},
+    },
+)
 async def get_order(
     order: Order = Depends(get_order_with_access),
 ) -> Order:
     return order
 
 
-@router.post("/{order_id}/cancel", response_model=StatusResponse)
+@router.post(
+    "/{order_id}/cancel",
+    response_model=StatusResponse,
+    summary="Cancel an order",
+    description="Cancel a pending order. Only orders with status `pending` can be canceled.",
+    responses={
+        400: {"description": "Order is not in pending status"},
+        403: {"description": "Not the order owner and not an admin"},
+        404: {"description": "Order not found"},
+    },
+)
 async def cancel_order(
     order: Order = Depends(get_order_with_access),
     db: AsyncSession = Depends(get_db),
@@ -124,7 +171,18 @@ async def cancel_order(
     return StatusResponse(status="canceled")
 
 
-@router.post("/{order_id}/pay", response_model=StatusResponse)
+@router.post(
+    "/{order_id}/pay",
+    response_model=StatusResponse,
+    summary="Pay for an order",
+    description="Mark a pending order as paid. Creates purchase records for each movie "
+    "in the order, preventing those movies from being added to a cart again.",
+    responses={
+        400: {"description": "Order is not in pending status"},
+        403: {"description": "Not the order owner and not an admin"},
+        404: {"description": "Order not found"},
+    },
+)
 async def pay_order(
     order: Order = Depends(get_order_with_access),
     db: AsyncSession = Depends(get_db),

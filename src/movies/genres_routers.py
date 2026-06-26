@@ -16,7 +16,12 @@ from src.movies.schemas import GenreCreate, GenreResponse, GenreUpdate, MovieRes
 router = APIRouter()
 
 
-@router.get("/", response_model=list[GenreResponse])
+@router.get(
+    "/",
+    response_model=list[GenreResponse],
+    summary="List genres",
+    description="Retrieve all genres with the number of associated movies.",
+)
 async def list_genres(db: AsyncSession = Depends(get_db)) -> list[GenreResponse]:
     stmt = (
         select(Genre, func.count(MovieGenre.movie_id).label("movie_count"))
@@ -34,7 +39,12 @@ async def list_genres(db: AsyncSession = Depends(get_db)) -> list[GenreResponse]
     return result
 
 
-@router.get("/{genre_id}/movies", response_model=list[MovieResponse])
+@router.get(
+    "/{genre_id}/movies",
+    response_model=list[MovieResponse],
+    summary="List movies by genre",
+    description="Retrieve all movies that belong to the specified genre.",
+)
 async def movies_by_genre(
     genre_id: int, db: AsyncSession = Depends(get_db)
 ) -> list[MovieResponse]:
@@ -50,7 +60,18 @@ async def movies_by_genre(
     return cast(list[MovieResponse], movies)
 
 
-@router.post("/", response_model=GenreResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/",
+    response_model=GenreResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Create a genre",
+    description="Create a new genre. Name must be unique. "
+    "Requires **moderator** or **admin** role.",
+    responses={
+        400: {"description": "Genre with this name already exists"},
+        403: {"description": "Moderator role required"},
+    },
+)
 async def create_genre(
     data: GenreCreate,
     _mod: User = Depends(_ensure_moderator),
@@ -68,7 +89,16 @@ async def create_genre(
     return GenreResponse(id=g.id, name=g.name, movie_count=0)
 
 
-@router.patch("/{genre_id}", response_model=GenreResponse)
+@router.patch(
+    "/{genre_id}",
+    response_model=GenreResponse,
+    summary="Update a genre",
+    description="Rename a genre. Requires **moderator** or **admin** role.",
+    responses={
+        403: {"description": "Moderator role required"},
+        404: {"description": "Genre not found"},
+    },
+)
 async def update_genre(
     genre_id: int,
     data: GenreUpdate,
@@ -92,7 +122,18 @@ async def update_genre(
     return GenreResponse(id=g.id, name=g.name, movie_count=cnt)
 
 
-@router.delete("/{genre_id}", response_model=StatusResponse)
+@router.delete(
+    "/{genre_id}",
+    response_model=StatusResponse,
+    summary="Delete a genre",
+    description="Delete a genre. Cannot delete genres that have associated movies. "
+    "Requires **moderator** or **admin** role.",
+    responses={
+        400: {"description": "Genre has associated movies"},
+        403: {"description": "Moderator role required"},
+        404: {"description": "Genre not found"},
+    },
+)
 async def delete_genre(
     genre_id: int,
     _mod: User = Depends(_ensure_moderator),

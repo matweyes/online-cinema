@@ -20,7 +20,13 @@ from src.movies.models import Movie
 router = APIRouter()
 
 
-@router.get("/", response_model=CartResponse)
+@router.get(
+    "/",
+    response_model=CartResponse,
+    summary="View cart",
+    description="Return the current user's shopping cart with all items, "
+    "including movie name, year, and price.",
+)
 async def get_cart(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ) -> CartResponse:
@@ -49,7 +55,16 @@ async def get_cart(
 
 
 @router.post(
-    "/items", status_code=status.HTTP_201_CREATED, response_model=CartItemResponse
+    "/items",
+    status_code=status.HTTP_201_CREATED,
+    response_model=CartItemResponse,
+    summary="Add item to cart",
+    description="Add a movie to the cart. Fails if the movie is already in the "
+    "cart or has been purchased previously.",
+    responses={
+        400: {"description": "Movie already in cart or already purchased"},
+        404: {"description": "Movie not found"},
+    },
 )
 async def add_item(
     payload: CartItemCreate,
@@ -100,12 +115,20 @@ async def add_item(
         movie_id=item.movie_id,
         name=movie.name,
         year=movie.year,
-        price=float(movie.price),
+        price=float(str(movie.price)),
         added_at=cast(datetime, item.added_at).isoformat(),
     )
 
 
-@router.delete("/items/{movie_id}", response_model=StatusResponse)
+@router.delete(
+    "/items/{movie_id}",
+    response_model=StatusResponse,
+    summary="Remove item from cart",
+    description="Remove a specific movie from the cart by its movie ID.",
+    responses={
+        404: {"description": "Cart or item not found"},
+    },
+)
 async def remove_item(
     movie_id: int,
     current_user: User = Depends(get_current_user),
@@ -131,7 +154,12 @@ async def remove_item(
     return StatusResponse(status="deleted")
 
 
-@router.delete("/items", response_model=StatusResponse)
+@router.delete(
+    "/items",
+    response_model=StatusResponse,
+    summary="Clear cart",
+    description="Remove all items from the current user's cart.",
+)
 async def clear_cart(
     current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)
 ):

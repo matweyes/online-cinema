@@ -15,7 +15,17 @@ from src.general_schemas import StatusResponse
 router = APIRouter()
 
 
-@router.patch("/users/{user_id}/group", response_model=StatusResponse)
+@router.patch(
+    "/users/{user_id}/group",
+    response_model=StatusResponse,
+    summary="Change user role",
+    description="Assign a new role (user / moderator / admin) to a user. "
+    "Requires **admin** role.",
+    responses={
+        403: {"description": "Admin role required"},
+        404: {"description": "User not found"},
+    },
+)
 async def change_user_group(
     user_id: int,
     data: GroupChangeSchema,
@@ -28,9 +38,7 @@ async def change_user_group(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    qg = await db.execute(
-        select(UserGroup).where(UserGroup.name == data.group.value)
-    )
+    qg = await db.execute(select(UserGroup).where(UserGroup.name == data.group.value))
     group = qg.scalars().first()
     if not group:
         group = UserGroup(name=data.group.value)
@@ -42,7 +50,17 @@ async def change_user_group(
     return StatusResponse(status="group_changed")
 
 
-@router.patch("/users/{user_id}/activation", response_model=StatusResponse)
+@router.patch(
+    "/users/{user_id}/activation",
+    response_model=StatusResponse,
+    summary="Manually activate user",
+    description="Activate a user account without an activation token. "
+    "Requires **admin** role.",
+    responses={
+        403: {"description": "Admin role required"},
+        404: {"description": "User not found"},
+    },
+)
 async def manual_activate(
     user_id: int,
     _admin: User = Depends(admin_required),

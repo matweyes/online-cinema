@@ -50,7 +50,17 @@ router = APIRouter()
 
 
 @router.post(
-    "/register", response_model=ActivationResponse, status_code=status.HTTP_201_CREATED
+    "/register",
+    response_model=ActivationResponse,
+    status_code=status.HTTP_201_CREATED,
+    summary="Register a new user",
+    description="Create a new user account. Returns an activation token "
+    "that must be submitted to the activation endpoint. "
+    "Password must be 8-128 characters and include uppercase, lowercase, digit, "
+    "and special character.",
+    responses={
+        400: {"description": "User with this email already exists"},
+    },
 )
 async def register(
     data: RegisterSchema, db: AsyncSession = Depends(get_db)
@@ -95,7 +105,14 @@ async def register(
 
 
 @router.post(
-    "/activation", response_model=StatusResponse, status_code=status.HTTP_200_OK
+    "/activation",
+    response_model=StatusResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Activate user account",
+    description="Activate a user account using the token received during registration.",
+    responses={
+        400: {"description": "Invalid or expired activation token"},
+    },
 )
 async def activate(
     data: ActivateSchema, db: AsyncSession = Depends(get_db)
@@ -125,7 +142,17 @@ async def activate(
     return StatusResponse(status="activated")
 
 
-@router.post("/activation/resend", response_model=ActivationResponse)
+@router.post(
+    "/activation/resend",
+    response_model=ActivationResponse,
+    summary="Resend activation token",
+    description="Generate a new activation token for an inactive account. "
+    "The previous token is invalidated.",
+    responses={
+        400: {"description": "User is already active"},
+        404: {"description": "User not found"},
+    },
+)
 async def resend_activation(
     data: ResendActivationSchema, db: AsyncSession = Depends(get_db)
 ) -> ActivationResponse:
@@ -153,7 +180,17 @@ async def resend_activation(
     return ActivationResponse(activation_token=token_str)
 
 
-@router.post("/login", response_model=Token)
+@router.post(
+    "/login",
+    response_model=Token,
+    summary="Log in",
+    description="Authenticate with email and password. Returns a JWT access token "
+    "and an opaque refresh token. The account must be activated first.",
+    responses={
+        401: {"description": "Invalid credentials"},
+        403: {"description": "Account is not activated"},
+    },
+)
 async def login(data: LoginSchema, db: AsyncSession = Depends(get_db)) -> Token:
     q = await db.execute(select(User).where(User.email == data.username))  # type: ignore
     user = q.scalars().first()
@@ -178,7 +215,12 @@ async def login(data: LoginSchema, db: AsyncSession = Depends(get_db)) -> Token:
     return Token(access_token=access_token, refresh_token=refresh_token_str)
 
 
-@router.post("/logout", response_model=StatusResponse)
+@router.post(
+    "/logout",
+    response_model=StatusResponse,
+    summary="Log out",
+    description="Invalidate the provided refresh token. Requires a valid access token.",
+)
 async def logout(
     data: LogoutSchema,
     current_user: User = Depends(get_current_user),
@@ -194,7 +236,15 @@ async def logout(
     return StatusResponse(status="logged_out")
 
 
-@router.post("/refresh", response_model=AccessResponse)
+@router.post(
+    "/refresh",
+    response_model=AccessResponse,
+    summary="Refresh access token",
+    description="Exchange a valid refresh token for a new JWT access token.",
+    responses={
+        401: {"description": "Invalid or expired refresh token"},
+    },
+)
 async def refresh(
     data: RefreshSchema, db: AsyncSession = Depends(get_db)
 ) -> AccessResponse:
@@ -217,7 +267,16 @@ async def refresh(
     return AccessResponse(access_token=access_token)
 
 
-@router.patch("/change-password", response_model=StatusResponse)
+@router.patch(
+    "/change-password",
+    response_model=StatusResponse,
+    summary="Change password",
+    description="Change the current user's password. Requires the old password "
+    "for verification. New password must meet complexity requirements.",
+    responses={
+        400: {"description": "Old password does not match"},
+    },
+)
 async def change_password(
     data: ChangePasswordSchema,
     current_user: User = Depends(get_current_user),
@@ -232,7 +291,15 @@ async def change_password(
     return StatusResponse(status="password_changed")
 
 
-@router.post("/forgot-password", response_model=ResetResponse)
+@router.post(
+    "/forgot-password",
+    response_model=ResetResponse,
+    summary="Request password reset",
+    description="Request a password-reset token. If the email exists, "
+    "a token is returned (in production it would be "
+    "sent via email). Returns an empty token if the user "
+    "is not found to avoid revealing account existence.",
+)
 async def forgot_password(
     data: ForgotPasswordSchema, db: AsyncSession = Depends(get_db)
 ) -> ResetResponse:
@@ -257,7 +324,16 @@ async def forgot_password(
     return ResetResponse(reset_token=token_str)
 
 
-@router.post("/reset-password", response_model=StatusResponse)
+@router.post(
+    "/reset-password",
+    response_model=StatusResponse,
+    summary="Reset password",
+    description="Set a new password using "
+    "the reset token from the forgot-password endpoint.",
+    responses={
+        400: {"description": "Invalid / expired token or user not found"},
+    },
+)
 async def reset_password(
     data: ResetPasswordSchema, db: AsyncSession = Depends(get_db)
 ) -> StatusResponse:
@@ -286,7 +362,13 @@ async def reset_password(
     return StatusResponse(status="password_reset")
 
 
-@router.get("/me", response_model=UserResponse)
+@router.get(
+    "/me",
+    response_model=UserResponse,
+    summary="Get current user",
+    description="Return "
+    "the authenticated user's ID, email, activation status, and role.",
+)
 async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     # convert stored group name (string) to UserGroupEnum
     # for Pydantic validation/serialization
@@ -305,13 +387,19 @@ async def me(current_user: User = Depends(get_current_user)) -> UserResponse:
     )
 
 
-@router.patch("/me/profile", response_model=StatusResponse)
+@router.patch(
+    "/me/profile",
+    response_model=StatusResponse,
+    summary="Update profile",
+    description="Partially update the current user's profile. Only fields included "
+    "in the request body are changed; omitted fields are left untouched. "
+    "Send a field with `null` to clear it.",
+)
 async def update_profile(
     data: ProfileUpdateSchema,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> StatusResponse:
-    """Update current user's profile using validated Pydantic schema."""
     q = await db.execute(
         select(UserProfile).where(UserProfile.user_id == current_user.id)
     )  # type: ignore

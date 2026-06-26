@@ -6,7 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - .:/app
-      - sqlite-data:/app/data
+      - ./data:/app/data
     env_file:
       - .env
     depends_on:
@@ -19,26 +19,28 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - redis-data:/data
+      - ./data:/data
 
   celery-worker:
     build: .
     container_name: cinema-celery-worker
+    volumes:
+      - .:/app
+      - ./data:/app/data
     env_file:
       - .env
     depends_on:
       - redis
-    command: celery -A src.tasks.celery_app worker --loglevel=info
+    command: celery -A src.tasks:celery_app worker --loglevel=info
 
   celery-beat:
     build: .
     container_name: cinema-celery-beat
+    volumes:
+      - .:/app
+      - ./data:/app/data
     env_file:
       - .env
     depends_on:
       - redis
-    command: celery -A src.tasks.celery_app beat --loglevel=info
-
-volumes:
-  sqlite-data:
-  redis-data:
+    command: celery -A src.tasks:celery_app beat --loglevel=info
